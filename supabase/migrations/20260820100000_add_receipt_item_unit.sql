@@ -1,0 +1,1 @@
+supabase/migrations/20260819100000_add_doctor_pricing.sql
