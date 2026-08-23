@@ -823,17 +823,25 @@ export default function ObatStok() {
             ]),
           ).trim();
 
-          const category = String(
+          let category = String(
             getRowValue(row, [
               'Kategori',
+              'kategori obat',
+              'Kategori Obat',
               'category',
+              'Category',
+              'golongan',
             ]),
           ).trim();
 
-          const form = String(
+          let form = String(
             getRowValue(row, [
               'Bentuk Sediaan',
+              'bentuk sediaan',
+              'Sediaan',
+              'sediaan',
               'form',
+              'Form',
               'bentuk',
             ]),
           ).trim();
@@ -841,16 +849,92 @@ export default function ObatStok() {
           const strength = String(
             getRowValue(row, [
               'Kekuatan',
+              'kekuatan obat',
               'strength',
+              'Strength',
+              'dosis',
+              'Dosis',
             ]),
           ).trim();
 
-          const unit = String(
+          if (!category) {
+            category = 'Lainnya';
+          }
+
+          if (!form) {
+            form = 'Tablet';
+          }
+
+          let unit = String(
             getRowValue(row, [
               'Satuan',
+              'satuan obat',
+              'Satuan Obat',
               'unit',
+              'Unit',
+              'UOM',
+              'uom',
+              'Kemasan',
+              'kemasan',
             ]),
           ).trim();
+
+          if (!unit) {
+            const normalizedForm = form
+              .toLowerCase()
+              .trim();
+
+            if (
+              normalizedForm.includes('tablet') ||
+              normalizedForm.includes('kapsul') ||
+              normalizedForm.includes('kaplet') ||
+              normalizedForm.includes('pil') ||
+              normalizedForm.includes('softgel')
+            ) {
+              unit = 'Strip';
+            } else if (
+              normalizedForm.includes('sirup') ||
+              normalizedForm.includes('syrup') ||
+              normalizedForm.includes('suspensi') ||
+              normalizedForm.includes('drops') ||
+              normalizedForm.includes('tetes') ||
+              normalizedForm.includes('elixir')
+            ) {
+              unit = 'Botol';
+            } else if (
+              normalizedForm.includes('salep') ||
+              normalizedForm.includes('krim') ||
+              normalizedForm.includes('gel') ||
+              normalizedForm.includes('ointment') ||
+              normalizedForm.includes('cream')
+            ) {
+              unit = 'Tube';
+            } else if (
+              normalizedForm.includes('injeksi') ||
+              normalizedForm.includes('injection') ||
+              normalizedForm.includes('ampul')
+            ) {
+              unit = 'Ampul';
+            } else if (
+              normalizedForm.includes('vial')
+            ) {
+              unit = 'Vial';
+            } else if (
+              normalizedForm.includes('sachet')
+            ) {
+              unit = 'Sachet';
+            } else if (
+              normalizedForm.includes('roll')
+            ) {
+              unit = 'Roll';
+            } else if (
+              normalizedForm.includes('box')
+            ) {
+              unit = 'Box';
+            } else {
+              unit = 'Pcs';
+            }
+          }
 
           const piecesPerStrip =
             Math.max(
@@ -969,19 +1053,11 @@ export default function ObatStok() {
           }
 
           if (!category) {
-            status = 'error';
-
-            messages.push(
-              'Kategori wajib diisi',
-            );
+            category = 'Lainnya';
           }
 
           if (!unit) {
-            status = 'error';
-
-            messages.push(
-              'Satuan wajib diisi',
-            );
+            unit = 'Pcs';
           }
 
           if (!barcode) {
@@ -1036,7 +1112,7 @@ export default function ObatStok() {
             name,
             generic_name: genericName,
             category,
-            form: form || 'Tablet',
+            form,
             strength,
             unit,
             pieces_per_strip:
