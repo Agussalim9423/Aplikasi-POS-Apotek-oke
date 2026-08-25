@@ -448,34 +448,104 @@ export default function ObatStok() {
     loadData();
   }, []);
 
+  /*
+   * Supabase/PostgREST dapat mengembalikan maksimal 1000 baris untuk
+   * satu request. Karena sebelumnya halaman ini melakukan satu select()
+   * tanpa pagination, daftar obat berhenti pada 1000 jenis.
+   *
+   * Semua data sekarang diambil bertahap per 1000 baris sampai halaman
+   * terakhir, sehingga jumlah jenis obat tidak dibatasi 1000.
+   */
   async function loadData() {
     setLoading(true);
 
-    const [medsRes, supsRes, batRes] =
-      await Promise.all([
-        tenantFrom('medicines')
+    const pageSize = 1000;
+
+    async function loadAllMedicines(): Promise<Medicine[]> {
+      const all: Medicine[] = [];
+      let from = 0;
+
+      while (true) {
+        const { data, error } = await tenantFrom('medicines')
           .select('*')
           .eq('is_active', true)
-          .order('name'),
+          .order('name')
+          .range(from, from + pageSize - 1);
 
-        tenantFrom('suppliers')
+        if (error) throw error;
+
+        const page = (data ?? []) as Medicine[];
+        all.push(...page);
+
+        if (page.length < pageSize) break;
+        from += pageSize;
+      }
+
+      return all;
+    }
+
+    async function loadAllSuppliers(): Promise<Supplier[]> {
+      const all: Supplier[] = [];
+      let from = 0;
+
+      while (true) {
+        const { data, error } = await tenantFrom('suppliers')
           .select('*')
           .eq('is_active', true)
-          .order('name'),
+          .order('name')
+          .range(from, from + pageSize - 1);
 
-        tenantFrom('medicine_batches')
+        if (error) throw error;
+
+        const page = (data ?? []) as Supplier[];
+        all.push(...page);
+
+        if (page.length < pageSize) break;
+        from += pageSize;
+      }
+
+      return all;
+    }
+
+    async function loadAllBatches(): Promise<BatchWithMed[]> {
+      const all: BatchWithMed[] = [];
+      let from = 0;
+
+      while (true) {
+        const { data, error } = await tenantFrom('medicine_batches')
           .select('*, medicines(*)')
-          .order('expiry_date'),
-      ]);
+          .order('expiry_date')
+          .range(from, from + pageSize - 1);
 
-    setMedicines(medsRes.data ?? []);
-    setSuppliers(supsRes.data ?? []);
+        if (error) throw error;
 
-    setBatches(
-      (batRes.data ?? []) as BatchWithMed[],
-    );
+        const page = (data ?? []) as BatchWithMed[];
+        all.push(...page);
 
-    setLoading(false);
+        if (page.length < pageSize) break;
+        from += pageSize;
+      }
+
+      return all;
+    }
+
+    try {
+      const [allMedicines, allSuppliers, allBatches] =
+        await Promise.all([
+          loadAllMedicines(),
+          loadAllSuppliers(),
+          loadAllBatches(),
+        ]);
+
+      setMedicines(allMedicines);
+      setSuppliers(allSuppliers);
+      setBatches(allBatches);
+    } catch (error) {
+      console.error('Gagal memuat data obat:', error);
+      alert(`Gagal memuat data: ${databaseMessage(error)}`);
+    } finally {
+      setLoading(false);
+    }
   }
 
   const filtered = medicines.filter(m => {
