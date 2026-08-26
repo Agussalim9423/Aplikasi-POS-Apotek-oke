@@ -449,34 +449,82 @@ export default function ObatStok() {
   }, []);
 
   async function loadData() {
-    setLoading(true);
+  setLoading(true);
 
-    const [medsRes, supsRes, batRes] =
-      await Promise.all([
-        tenantFrom('medicines')
-          .select('*')
-          .eq('is_active', true)
-          .order('name'),
+  try {
+    const PAGE_SIZE = 1000;
+    let from = 0;
+    let hasMore = true;
 
-        tenantFrom('suppliers')
-          .select('*')
-          .eq('is_active', true)
-          .order('name'),
+    const allMedicines: Medicine[] = [];
 
-        tenantFrom('medicine_batches')
-          .select('*, medicines(*)')
-          .order('expiry_date'),
-      ]);
+    while (hasMore) {
+      const { data, error } = await tenantFrom('medicines')
+        .select('*')
+        .eq('is_active', true)
+        .order('name')
+        .range(from, from + PAGE_SIZE - 1);
 
-    setMedicines(medsRes.data ?? []);
-    setSuppliers(supsRes.data ?? []);
+      if (error) {
+        throw error;
+      }
+
+      const rows = (data ?? []) as Medicine[];
+
+      allMedicines.push(...rows);
+
+      if (rows.length < PAGE_SIZE) {
+        hasMore = false;
+      } else {
+        from += PAGE_SIZE;
+      }
+    }
+
+    const [supsRes, batRes] = await Promise.all([
+      tenantFrom('suppliers')
+        .select('*')
+        .eq('is_active', true)
+        .order('name'),
+
+      tenantFrom('medicine_batches')
+        .select('*, medicines(*)')
+        .order('expiry_date'),
+    ]);
+
+    if (supsRes.error) {
+      throw supsRes.error;
+    }
+
+    if (batRes.error) {
+      throw batRes.error;
+    }
+
+    setMedicines(allMedicines);
+
+    setSuppliers(
+      (supsRes.data ?? []) as Supplier[],
+    );
 
     setBatches(
       (batRes.data ?? []) as BatchWithMed[],
     );
+  } catch (error) {
+    console.error(
+      'Gagal memuat data obat:',
+      error,
+    );
 
+    alert(
+      `Gagal memuat data obat: ${
+        error instanceof Error
+          ? error.message
+          : 'Terjadi kesalahan'
+      }`,
+    );
+  } finally {
     setLoading(false);
   }
+}
 
   const filtered = medicines.filter(m => {
     const matchSearch =

@@ -1,10 +1,17 @@
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import {
+  supabase,
+  tenantFrom,
+} from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
-import { Save, Building2 } from 'lucide-react';
+import {
+  Save,
+  Building2,
+} from 'lucide-react';
 import { Field } from './ObatStok';
 
-export type AppSettings = Record<string, string>;
+export type AppSettings =
+  Record<string, string>;
 
 export const SETTINGS_UPDATED_EVENT =
   'apotek:settings-updated';
@@ -22,96 +29,103 @@ const DEFAULT_SETTINGS: AppSettings = {
 };
 
 export default function Pengaturan() {
-  console.log('========================================');
-  console.log('=== PENGATURAN WEB VERSION ===');
-  console.log('VERSION: FIX-SAVE-2026-08-22-01');
-  console.log(
-    'SUPABASE URL:',
-    import.meta.env.VITE_SUPABASE_URL
-  );
-  console.log('========================================');
+  const {
+    profile,
+    refreshProfile,
+  } = useAuth();
 
-  const { profile } = useAuth();
-
-  console.log(
-    'PROFILE EMAIL:',
-    profile?.email
+  const [
+    settings,
+    setSettings,
+  ] = useState<AppSettings>(
+    DEFAULT_SETTINGS,
   );
 
-  console.log(
-    'TENANT ID:',
-    profile?.tenant_id
-  );
+  const [
+    saving,
+    setSaving,
+  ] = useState(false);
 
-  const [settings, setSettings] =
-    useState<AppSettings>(DEFAULT_SETTINGS);
+  const [
+    saved,
+    setSaved,
+  ] = useState(false);
 
-  const [saving, setSaving] =
-    useState(false);
-
-  const [saved, setSaved] =
-    useState(false);
-
-  const [error, setError] =
-    useState('');
+  const [
+    error,
+    setError,
+  ] = useState('');
 
   useEffect(() => {
-    if (profile?.tenant_id) {
+    if (
+      profile?.tenant_id
+    ) {
       loadSettings();
-    } else if (profile) {
-      setError(
-        'Tenant ID tidak ditemukan pada akun yang sedang login.'
-      );
-    }
-  }, [profile?.tenant_id]);
-
-  function updateSetting(
-    key: string,
-    value: string
-  ) {
-    setSettings((current) => ({
-      ...current,
-      [key]: value,
-    }));
-  }
-
-  async function loadSettings() {
-    if (!profile?.tenant_id) {
-      setError('Tenant ID tidak ditemukan.');
-
       return;
     }
 
-    console.log(
-      '========================================'
-    );
-
-    console.log(
-      'LOAD SETTINGS TENANT:',
-      profile.tenant_id
-    );
-
-    try {
-      const { data, error: loadError } =
-        await supabase
-          .from('settings')
-          .select('id, tenant_id, key, value')
-          .eq(
-            'tenant_id',
-            profile.tenant_id
-          );
-
-      console.log(
-        'HASIL LOAD SETTINGS:',
-        data
+    if (
+      profile
+    ) {
+      setSettings(
+        DEFAULT_SETTINGS,
       );
 
-      if (loadError) {
-        console.error(
-          'ERROR LOAD SETTINGS:',
-          loadError
+      setError(
+        'Tenant ID tidak ditemukan pada akun yang sedang login. Silakan logout lalu login kembali.',
+      );
+    }
+  }, [
+    profile?.tenant_id,
+  ]);
+
+  function updateSetting(
+    key: string,
+    value: string,
+  ) {
+    setSettings(
+      current => ({
+        ...current,
+        [key]: value,
+      }),
+    );
+
+    setSaved(false);
+    setError('');
+  }
+
+  async function loadSettings() {
+    const tenantId =
+      profile?.tenant_id;
+
+    if (
+      !tenantId
+    ) {
+      return;
+    }
+
+    try {
+      setError('');
+
+      /*
+       * Ambil seluruh pengaturan tenant aktif.
+       *
+       * tenantFrom() otomatis membatasi
+       * data berdasarkan tenant_id.
+       */
+      const {
+        data,
+        error: loadError,
+      } = await tenantFrom(
+        'settings',
+      )
+        .select(
+          'id, tenant_id, key, value',
         );
 
+      if (
+        loadError
+      ) {
         throw loadError;
       }
 
@@ -119,44 +133,79 @@ export default function Pengaturan() {
         ...DEFAULT_SETTINGS,
       };
 
-      for (const row of data ?? []) {
-        result[row.key] =
-          row.value ?? '';
+      for (
+        const row of data ?? []
+      ) {
+        if (
+          row?.key &&
+          Object.prototype.hasOwnProperty.call(
+            DEFAULT_SETTINGS,
+            row.key,
+          )
+        ) {
+          result[
+            row.key
+          ] =
+            row.value ?? '';
+        }
       }
 
-      console.log(
-        'SETTINGS YANG DIMUAT:',
-        result
+      /*
+       * Jika tabel settings belum memiliki
+       * data identitas, gunakan data tenant
+       * sebagai nilai awal.
+       */
+      if (
+        !result.pharmacy_name
+      ) {
+        result.pharmacy_name =
+          profile?.tenant?.name ??
+          '';
+      }
+
+      if (
+        !result.pharmacy_address
+      ) {
+        result.pharmacy_address =
+          profile?.tenant?.address ??
+          '';
+      }
+
+      if (
+        !result.pharmacy_phone
+      ) {
+        result.pharmacy_phone =
+          profile?.tenant?.phone ??
+          '';
+      }
+
+      setSettings(
+        result,
       );
-
-      setSettings(result);
-
-      setError('');
-    } catch (err: any) {
+    } catch (
+      err: any
+    ) {
       console.error(
-        'GAGAL MEMUAT SETTINGS:',
-        err
+        'Gagal memuat pengaturan:',
+        err,
       );
 
       setError(
         err?.message ??
-          'Gagal memuat pengaturan.'
+          'Gagal memuat pengaturan.',
       );
     }
   }
 
   async function saveSettings() {
-    if (!profile?.tenant_id) {
-      const message =
-        'Tenant ID tidak ditemukan. Silakan logout lalu login kembali.';
+    const tenantId =
+      profile?.tenant_id;
 
-      console.error(message);
-
-      setError(message);
-
-      alert(
-        'GAGAL MENYIMPAN!\n\n' +
-          message
+    if (
+      !tenantId
+    ) {
+      setError(
+        'Tenant ID tidak ditemukan. Silakan logout lalu login kembali.',
       );
 
       return;
@@ -166,428 +215,330 @@ export default function Pengaturan() {
     setSaved(false);
     setError('');
 
-    const tenantId =
-      profile.tenant_id;
-
-    console.log(
-      '========================================'
-    );
-
-    console.log(
-      'MULAI MENYIMPAN SETTINGS'
-    );
-
-    console.log(
-      'VERSION:',
-      'FIX-SAVE-2026-08-22-01'
-    );
-
-    console.log(
-      'SUPABASE URL:',
-      import.meta.env.VITE_SUPABASE_URL
-    );
-
-    console.log(
-      'PROFILE:',
-      profile
-    );
-
-    console.log(
-      'TENANT ID:',
-      tenantId
-    );
-
-    console.log(
-      'DATA SETTINGS:',
-      settings
-    );
-
     try {
       const now =
         new Date().toISOString();
 
-      const rows = Object.entries(
-        settings
-      ).map(
-        ([key, value]) => ({
-          tenant_id: tenantId,
-          key,
-          value: value ?? '',
-          updated_at: now,
-        })
-      );
+      /*
+       * Ambil seluruh settings yang sudah ada.
+       *
+       * tenantFrom() sudah otomatis menambahkan:
+       *
+       * WHERE tenant_id = tenant aktif
+       */
+      const {
+        data: existingSettings,
+        error: existingError,
+      } = await tenantFrom(
+        'settings',
+      )
+        .select(
+          'id, key',
+        );
 
-      console.log(
-        'ROWS YANG AKAN DISIMPAN:',
-        rows
-      );
+      if (
+        existingError
+      ) {
+        throw existingError;
+      }
+
+      const existingByKey =
+        new Map(
+          (
+            existingSettings ?? []
+          ).map(
+            (row: any) => [
+              row.key,
+              row.id,
+            ],
+          ),
+        );
 
       /*
-       * Simpan satu per satu.
+       * Simpan semua pengaturan.
        *
-       * Cara ini tidak membutuhkan unique constraint
-       * tenant_id,key untuk menggunakan upsert.
+       * Jika key sudah ada:
+       * UPDATE.
+       *
+       * Jika belum ada:
+       * INSERT.
+       *
+       * tenantFrom() akan otomatis
+       * memastikan tenant_id ikut
+       * pada INSERT.
        */
-
-      for (const row of rows) {
-        console.log(
-          'MEMPROSES KEY:',
-          row.key,
-          'VALUE:',
-          row.value
-        );
-
-        const {
-          data: existingData,
-          error: existingError,
-        } = await supabase
-          .from('settings')
-          .select('id')
-          .eq(
-            'tenant_id',
-            tenantId
-          )
-          .eq(
-            'key',
-            row.key
-          )
-          .maybeSingle();
-
-        console.log(
-          'CEK DATA LAMA:',
-          row.key,
-          existingData
-        );
-
-        if (existingError) {
-          console.error(
-            'ERROR CEK DATA:',
-            existingError
+      for (
+        const [
+          key,
+          value,
+        ] of Object.entries(
+          settings,
+        )
+      ) {
+        const existingId =
+          existingByKey.get(
+            key,
           );
 
-          throw existingError;
-        }
-
-        if (existingData?.id) {
-          console.log(
-            'UPDATE SETTINGS:',
-            row.key
-          );
-
+        if (
+          existingId
+        ) {
           const {
-            data: updatedData,
             error: updateError,
-          } = await supabase
-            .from('settings')
+          } = await tenantFrom(
+            'settings',
+          )
             .update({
-              value: row.value,
-              updated_at: now,
+              value:
+                value ?? '',
+
+              updated_at:
+                now,
             })
             .eq(
               'id',
-              existingData.id
-            )
-            .eq(
-              'tenant_id',
-              tenantId
-            )
-            .select(
-              'id, tenant_id, key, value'
+              existingId,
             );
 
-          console.log(
-            'HASIL UPDATE:',
-            updatedData
-          );
-
-          if (updateError) {
-            console.error(
-              'ERROR UPDATE:',
-              updateError
-            );
-
+          if (
+            updateError
+          ) {
             throw updateError;
           }
-
-          if (
-            !updatedData ||
-            updatedData.length === 0
-          ) {
-            throw new Error(
-              'Update tidak mengubah data untuk key: ' +
-                row.key
-            );
-          }
         } else {
-          console.log(
-            'INSERT SETTINGS:',
-            row.key
-          );
-
           const {
-            data: insertedData,
             error: insertError,
-          } = await supabase
-            .from('settings')
-            .insert({
-              tenant_id: tenantId,
-              key: row.key,
-              value: row.value,
-              updated_at: now,
-            })
-            .select(
-              'id, tenant_id, key, value'
-            );
+          } = await tenantFrom(
+            'settings',
+          ).insert({
+            /*
+             * tenantFrom() juga akan
+             * otomatis menambahkan
+             * tenant_id.
+             *
+             * Tetap dikirim secara
+             * eksplisit agar aman.
+             */
+            tenant_id:
+              tenantId,
 
-          console.log(
-            'HASIL INSERT:',
-            insertedData
-          );
+            key,
 
-          if (insertError) {
-            console.error(
-              'ERROR INSERT:',
-              insertError
-            );
+            value:
+              value ?? '',
 
-            throw insertError;
-          }
+            updated_at:
+              now,
+          });
 
           if (
-            !insertedData ||
-            insertedData.length === 0
+            insertError
           ) {
-            throw new Error(
-              'Insert tidak mengembalikan data untuk key: ' +
-                row.key
-            );
+            throw insertError;
           }
         }
       }
 
-      console.log(
-        'SEMUA SETTINGS BERHASIL DIPROSES'
-      );
-
       /*
-       * Update data utama tenant.
-       * Ini digunakan untuk identitas aplikasi
-       * seperti nama apotek.
+       * Update identitas utama tenant.
+       *
+       * Data ini digunakan oleh:
+       *
+       * - auth.tsx
+       * - profile.tenant
+       * - layout
+       * - dashboard
+       * - bagian aplikasi lain
        */
-
       const {
         data: tenantData,
         error: tenantError,
       } = await supabase
-        .from('tenants')
+        .from(
+          'tenants',
+        )
         .update({
           name:
-            settings.pharmacy_name ||
+            settings.pharmacy_name
+              .trim() ||
             'Apotek',
 
           address:
-            settings.pharmacy_address ||
+            settings.pharmacy_address
+              .trim() ||
             null,
 
           phone:
-            settings.pharmacy_phone ||
+            settings.pharmacy_phone
+              .trim() ||
             null,
         })
         .eq(
           'id',
-          tenantId
+          tenantId,
         )
         .select(
-          'id, name, address, phone'
-        );
+          `
+            id,
+            name,
+            address,
+            phone,
+            footer_copyright,
+            status
+          `,
+        )
+        .maybeSingle();
 
-      console.log(
-        'HASIL UPDATE TENANT:',
-        tenantData
-      );
-
-      if (tenantError) {
-        console.error(
-          'ERROR UPDATE TENANT:',
-          tenantError
-        );
-
+      if (
+        tenantError
+      ) {
         throw tenantError;
       }
 
       if (
-        !tenantData ||
-        tenantData.length === 0
+        !tenantData
       ) {
         throw new Error(
-          'Data tenant tidak berhasil diperbarui.'
+          'Data tenant tidak berhasil diperbarui.',
         );
       }
 
       /*
-       * Baca ulang langsung dari database
-       * untuk memastikan data benar-benar tersimpan.
+       * Baca ulang settings dari database.
+       *
+       * Ini memastikan data pada state
+       * benar-benar berasal dari database.
        */
-
-      console.log(
-        'MEMVERIFIKASI DATA KE SUPABASE...'
-      );
-
       const {
         data: verifyData,
         error: verifyError,
-      } = await supabase
-        .from('settings')
+      } = await tenantFrom(
+        'settings',
+      )
         .select(
-          'tenant_id, key, value'
-        )
-        .eq(
-          'tenant_id',
-          tenantId
+          'key, value',
         );
 
-      console.log(
-        'HASIL VERIFIKASI:',
-        verifyData
-      );
-
-      if (verifyError) {
-        console.error(
-          'ERROR VERIFIKASI:',
-          verifyError
-        );
-
+      if (
+        verifyError
+      ) {
         throw verifyError;
       }
 
-      const verifyMap: AppSettings = {
-        ...DEFAULT_SETTINGS,
-      };
+      const verifiedSettings:
+        AppSettings = {
+          ...DEFAULT_SETTINGS,
+        };
 
       for (
         const row of verifyData ?? []
       ) {
-        verifyMap[row.key] =
-          row.value ?? '';
+        if (
+          row?.key &&
+          Object.prototype.hasOwnProperty.call(
+            DEFAULT_SETTINGS,
+            row.key,
+          )
+        ) {
+          verifiedSettings[
+            row.key
+          ] =
+            row.value ?? '';
+        }
       }
 
-      console.log(
-        'DATA AKHIR DARI DATABASE:',
-        verifyMap
-      );
+      /*
+       * Sinkronkan kembali identitas
+       * dari data tenant yang baru.
+       */
+      verifiedSettings.pharmacy_name =
+        tenantData.name ??
+        verifiedSettings.pharmacy_name;
 
-      if (
-        verifyMap.pharmacy_name !==
-        settings.pharmacy_name
-      ) {
-        throw new Error(
-          'VERIFIKASI GAGAL.\n\n' +
-            'Nama yang ingin disimpan: "' +
-            settings.pharmacy_name +
-            '"\n\n' +
-            'Nama yang terbaca dari database: "' +
-            verifyMap.pharmacy_name +
-            '"'
-        );
-      }
+      verifiedSettings.pharmacy_address =
+        tenantData.address ??
+        verifiedSettings.pharmacy_address;
+
+      verifiedSettings.pharmacy_phone =
+        tenantData.phone ??
+        verifiedSettings.pharmacy_phone;
 
       setSettings(
-        verifyMap
+        verifiedSettings,
       );
 
+      /*
+       * INI BAGIAN PENTING.
+       *
+       * auth.tsx akan membaca ulang
+       * user dan tenant dari database,
+       * lalu memperbarui:
+       *
+       * - profile
+       * - profile.tenant
+       * - localStorage
+       */
+      await refreshProfile();
+
+      /*
+       * Beri tahu app.tsx dan layout
+       * bahwa pengaturan sudah berubah.
+       */
       window.dispatchEvent(
         new CustomEvent(
           SETTINGS_UPDATED_EVENT,
           {
             detail: {
-              settings: verifyMap,
+              settings:
+                verifiedSettings,
+
               tenant: {
-                id: tenantId,
+                id:
+                  tenantData.id,
+
                 name:
-                  settings.pharmacy_name ||
+                  tenantData.name ??
                   'Apotek',
+
                 address:
-                  settings.pharmacy_address ||
+                  tenantData.address ??
                   '',
+
                 phone:
-                  settings.pharmacy_phone ||
+                  tenantData.phone ??
+                  '',
+
+                footer_copyright:
+                  tenantData.footer_copyright ??
                   '',
               },
             },
-          }
-        )
-      );
-
-      console.log(
-        'EVENT SETTINGS_UPDATED DIKIRIM'
+          },
+        ),
       );
 
       setSaved(true);
 
-      setTimeout(() => {
-        setSaved(false);
-      }, 2000);
-
-      alert(
-        'BERHASIL DISIMPAN KE SUPABASE!\n\n' +
-          'Tenant ID:\n' +
-          tenantId +
-          '\n\n' +
-          'Nama Apotek:\n' +
-          verifyMap.pharmacy_name
+      window.setTimeout(
+        () => {
+          setSaved(false);
+        },
+        2000,
       );
-
-    } catch (err: any) {
+    } catch (
+      err: any
+    ) {
       console.error(
-        '========================================'
+        'Gagal menyimpan pengaturan:',
+        err,
       );
 
-      console.error(
-        'GAGAL MENYIMPAN SETTINGS:',
-        err
-      );
-
-      console.error(
-        'ERROR MESSAGE:',
-        err?.message
-      );
-
-      console.error(
-        'ERROR DETAIL:',
-        err?.details
-      );
-
-      console.error(
-        'ERROR HINT:',
-        err?.hint
-      );
-
-      console.error(
-        'ERROR CODE:',
-        err?.code
-      );
-
-      const message =
+      setError(
         err?.message ??
-        'Pengaturan gagal disimpan.';
-
-      setError(message);
-
-      alert(
-        'GAGAL MENYIMPAN!\n\n' +
-          message
+          'Pengaturan gagal disimpan.',
       );
-
     } finally {
       setSaving(false);
-
-      console.log(
-        'PROSES SIMPAN SELESAI'
-      );
-
-      console.log(
-        '========================================'
-      );
     }
   }
 
@@ -595,6 +546,7 @@ export default function Pengaturan() {
     <div className="p-6 space-y-4 max-w-2xl">
 
       <div>
+
         <h1 className="text-2xl font-bold text-gray-900">
           Pengaturan
         </h1>
@@ -602,68 +554,89 @@ export default function Pengaturan() {
         <p className="text-gray-500 text-sm mt-1">
           Informasi apotek dan preferensi sistem
         </p>
+
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 space-y-4">
 
         <div className="flex items-center gap-2 text-teal-600 font-semibold">
+
           <Building2 size={18} />
+
           Informasi Apotek
+
         </div>
 
         <Field label="Nama Apotek">
+
           <input
-            value={settings.pharmacy_name}
-            onChange={(e) =>
+            value={
+              settings.pharmacy_name
+            }
+            onChange={e =>
               updateSetting(
                 'pharmacy_name',
-                e.target.value
+                e.target.value,
               )
             }
             className="input"
           />
+
         </Field>
 
         <Field label="Alamat">
+
           <textarea
-            value={settings.pharmacy_address}
-            onChange={(e) =>
+            value={
+              settings.pharmacy_address
+            }
+            onChange={e =>
               updateSetting(
                 'pharmacy_address',
-                e.target.value
+                e.target.value,
               )
             }
             rows={2}
             className="input"
           />
+
         </Field>
 
         <div className="grid grid-cols-2 gap-3">
 
           <Field label="Telepon">
+
             <input
-              value={settings.pharmacy_phone}
-              onChange={(e) =>
+              value={
+                settings.pharmacy_phone
+              }
+              onChange={e =>
                 updateSetting(
                   'pharmacy_phone',
-                  e.target.value
+                  e.target.value,
                 )
               }
               className="input"
             />
+
           </Field>
 
           <Field label="Email">
+
             <input
-              value={settings.pharmacy_email}
-              onChange={(e) =>
+              type="email"
+              value={
+                settings.pharmacy_email
+              }
+              onChange={e =>
                 updateSetting(
                   'pharmacy_email',
-                  e.target.value
+                  e.target.value,
                 )
               }
               className="input"
             />
+
           </Field>
 
         </div>
@@ -671,44 +644,56 @@ export default function Pengaturan() {
         <div className="grid grid-cols-2 gap-3">
 
           <Field label="Apoteker Penanggung Jawab">
+
             <input
-              value={settings.pharmacist_name}
-              onChange={(e) =>
+              value={
+                settings.pharmacist_name
+              }
+              onChange={e =>
                 updateSetting(
                   'pharmacist_name',
-                  e.target.value
+                  e.target.value,
                 )
               }
               className="input"
             />
+
           </Field>
 
           <Field label="No. SIPA">
+
             <input
-              value={settings.sipa_number}
-              onChange={(e) =>
+              value={
+                settings.sipa_number
+              }
+              onChange={e =>
                 updateSetting(
                   'sipa_number',
-                  e.target.value
+                  e.target.value,
                 )
               }
               className="input"
             />
+
           </Field>
 
         </div>
 
         <Field label="No. SIA">
+
           <input
-            value={settings.sia_number}
-            onChange={(e) =>
+            value={
+              settings.sia_number
+            }
+            onChange={e =>
               updateSetting(
                 'sia_number',
-                e.target.value
+                e.target.value,
               )
             }
             className="input"
           />
+
         </Field>
 
       </div>
@@ -722,35 +707,39 @@ export default function Pengaturan() {
         <div className="grid grid-cols-2 gap-3">
 
           <Field label="Ambang Stok Rendah (unit)">
+
             <input
               type="number"
               value={
                 settings.low_stock_threshold
               }
-              onChange={(e) =>
+              onChange={e =>
                 updateSetting(
                   'low_stock_threshold',
-                  e.target.value
+                  e.target.value,
                 )
               }
               className="input"
             />
+
           </Field>
 
           <Field label="Peringatan Kadaluarsa (hari)">
+
             <input
               type="number"
               value={
                 settings.expiry_warning_days
               }
-              onChange={(e) =>
+              onChange={e =>
                 updateSetting(
                   'expiry_warning_days',
-                  e.target.value
+                  e.target.value,
                 )
               }
               className="input"
             />
+
           </Field>
 
         </div>
@@ -758,23 +747,33 @@ export default function Pengaturan() {
       </div>
 
       {error && (
+
         <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+
           {error}
+
         </div>
+
       )}
 
       <button
-        onClick={saveSettings}
-        disabled={saving}
+        onClick={
+          saveSettings
+        }
+        disabled={
+          saving
+        }
         className="bg-teal-500 hover:bg-teal-600 disabled:opacity-50 text-white px-6 py-2.5 rounded-xl text-sm font-semibold flex items-center gap-2 transition-colors"
       >
+
         <Save size={16} />
 
         {saving
           ? 'Menyimpan...'
           : saved
-          ? 'Tersimpan!'
-          : 'Simpan Pengaturan'}
+            ? 'Tersimpan!'
+            : 'Simpan Pengaturan'}
+
       </button>
 
     </div>

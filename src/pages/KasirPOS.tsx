@@ -309,18 +309,62 @@ export default function KasirPOS() {
     });
   }
 
-  async function loadData() {
-    const [medsRes, patientsRes, doctorsRes, unitsRes] = await Promise.all([
-      tenantFrom('medicines').select('*').eq('is_active', true).order('name'),
-      tenantFrom('patients').select('*').order('name'),
-      tenantFrom('doctors').select('*').eq('is_active', true).order('name'),
-      tenantFrom('medicine_units').select('*').order('unit_name'),
+async function loadData() {
+  try {
+    const allMedicines: Medicine[] = [];
+    const pageSize = 1000;
+    let from = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+      const { data, error } = await tenantFrom('medicines')
+        .select('*')
+        .eq('is_active', true)
+        .order('name')
+        .range(from, from + pageSize - 1);
+
+      if (error) {
+        console.error('Gagal memuat obat:', error);
+        break;
+      }
+
+      const medicinesPage = (data ?? []) as Medicine[];
+
+      allMedicines.push(...medicinesPage);
+
+      if (medicinesPage.length < pageSize) {
+        hasMore = false;
+      } else {
+        from += pageSize;
+      }
+    }
+
+    const [patientsRes, doctorsRes, unitsRes] = await Promise.all([
+      tenantFrom('patients')
+        .select('*')
+        .order('name'),
+
+      tenantFrom('doctors')
+        .select('*')
+        .eq('is_active', true)
+        .order('name'),
+
+      tenantFrom('medicine_units')
+        .select('*')
+        .order('unit_name'),
     ]);
-    setMedicines(medsRes.data ?? []);
+
+    setMedicines(allMedicines);
     setPatients(patientsRes.data ?? []);
     setDoctors(doctorsRes.data ?? []);
-    setMedicineUnits((unitsRes.data ?? []) as MedicineUnit[]);
+    setMedicineUnits(
+      (unitsRes.data ?? []) as MedicineUnit[]
+    );
+
+  } catch (error) {
+    console.error('Gagal memuat data Kasir:', error);
   }
+}
 
   const filteredMeds = useMemo(() => medicines.filter(m => {
     const matchSearch = m.name.toLowerCase().includes(search.toLowerCase()) ||
