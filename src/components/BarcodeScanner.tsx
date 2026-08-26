@@ -25,9 +25,9 @@ export default function BarcodeScanner({
   onClose,
   title = 'Scan Barcode',
 }: Props) {
-  const [mode, setMode] = useState<'camera' | 'usb'>(
-    'camera',
-  );
+  const [mode, setMode] = useState<
+    'camera' | 'usb'
+  >('camera');
 
   const [cameraReady, setCameraReady] =
     useState(false);
@@ -60,55 +60,58 @@ export default function BarcodeScanner({
   const usbBufferRef = useRef('');
 
   const usbTimerRef =
-    useRef<ReturnType<typeof setTimeout> | null>(
-      null,
-    );
+    useRef<ReturnType<
+      typeof setTimeout
+    > | null>(null);
 
   onScanRef.current = onScan;
 
-  const stopCamera = useCallback(async () => {
-    const scanner = scannerRef.current;
+  const stopCamera = useCallback(
+    async () => {
+      const scanner = scannerRef.current;
 
-    if (!scanner) {
+      if (!scanner) {
+        scanningRef.current = false;
+        startingRef.current = false;
+
+        if (mountedRef.current) {
+          setCameraReady(false);
+        }
+
+        return;
+      }
+
+      scannerRef.current = null;
+
+      try {
+        if (scanningRef.current) {
+          await scanner.stop();
+        }
+      } catch (error) {
+        console.warn(
+          'Gagal menghentikan scanner:',
+          error,
+        );
+      }
+
+      try {
+        await scanner.clear();
+      } catch (error) {
+        console.warn(
+          'Gagal membersihkan scanner:',
+          error,
+        );
+      }
+
       scanningRef.current = false;
       startingRef.current = false;
 
       if (mountedRef.current) {
         setCameraReady(false);
       }
-
-      return;
-    }
-
-    scannerRef.current = null;
-
-    try {
-      if (scanningRef.current) {
-        await scanner.stop();
-      }
-    } catch (error) {
-      console.warn(
-        'Gagal menghentikan scanner:',
-        error,
-      );
-    }
-
-    try {
-      await scanner.clear();
-    } catch (error) {
-      console.warn(
-        'Gagal membersihkan scanner:',
-        error,
-      );
-    }
-
-    scanningRef.current = false;
-    startingRef.current = false;
-
-    if (mountedRef.current) {
-      setCameraReady(false);
-    }
-  }, []);
+    },
+    [],
+  );
 
   const handleDetectedCode = useCallback(
     (code: string) => {
@@ -116,7 +119,9 @@ export default function BarcodeScanner({
 
       if (!cleanCode) return;
 
-      if (processingScanRef.current) return;
+      if (processingScanRef.current) {
+        return;
+      }
 
       processingScanRef.current = true;
 
@@ -129,149 +134,206 @@ export default function BarcodeScanner({
     [],
   );
 
-  const startCamera = useCallback(async () => {
-    if (startingRef.current) return;
+  const startCamera = useCallback(
+    async () => {
+      if (startingRef.current) return;
 
-    if (scanningRef.current) return;
+      if (scanningRef.current) return;
 
-    const element = document.getElementById(
-      containerId.current,
-    );
-
-    if (!element) {
-      return;
-    }
-
-    startingRef.current = true;
-
-    if (mountedRef.current) {
-      setCameraError(null);
-      setCameraReady(false);
-    }
-
-    try {
-      await stopCamera();
-
-      if (!mountedRef.current) return;
-
-      const scanner = new Html5Qrcode(
-        containerId.current,
-      );
-
-      scannerRef.current = scanner;
-
-      const config = {
-        fps: 10,
-        qrbox: {
-          width: 250,
-          height: 150,
-        },
-        aspectRatio: 1.7778,
-        disableFlip: false,
-      };
-
-      try {
-        await scanner.start(
-          {
-            facingMode: 'environment',
-          },
-          config,
-          (decodedText) => {
-            handleDetectedCode(decodedText);
-          },
-          () => {
-            // Error pembacaan barcode diabaikan
-            // karena scanner terus mencoba membaca.
-          },
-        );
-      } catch (environmentError) {
-        console.warn(
-          'Kamera belakang tidak tersedia, mencoba kamera lain:',
-          environmentError,
+      const element =
+        document.getElementById(
+          containerId.current,
         );
 
-        try {
-          await scanner.clear();
-        } catch {
-          // ignore
-        }
-
-        const fallbackScanner =
-          new Html5Qrcode(
-            containerId.current,
-          );
-
-        scannerRef.current =
-          fallbackScanner;
-
-        const cameras =
-          await Html5Qrcode.getCameras();
-
-        if (!cameras.length) {
-          throw new Error(
-            'Tidak ada kamera yang terdeteksi pada perangkat ini.',
-          );
-        }
-
-        const preferredCamera =
-          cameras.find(camera =>
-            /back|rear|environment|belakang/i.test(
-              camera.label,
-            ),
-          ) ?? cameras[cameras.length - 1];
-
-        await fallbackScanner.start(
-          preferredCamera.id,
-          config,
-          (decodedText) => {
-            handleDetectedCode(decodedText);
-          },
-          () => {
-            // Scanner terus mencoba membaca barcode.
-          },
-        );
+      if (!element) {
+        return;
       }
 
-      scanningRef.current = true;
+      startingRef.current = true;
 
       if (mountedRef.current) {
-        setCameraReady(true);
         setCameraError(null);
-      }
-    } catch (error) {
-      console.error(
-        'Gagal memulai kamera:',
-        error,
-      );
-
-      scanningRef.current = false;
-
-      const message =
-        error instanceof Error
-          ? error.message
-          : String(error);
-
-      if (mountedRef.current) {
-        setCameraError(message);
         setCameraReady(false);
       }
 
       try {
-        if (scannerRef.current) {
-          await scannerRef.current.clear();
-        }
-      } catch {
-        // ignore
-      }
+        await stopCamera();
 
-      scannerRef.current = null;
-    } finally {
-      startingRef.current = false;
-    }
-  }, [
-    handleDetectedCode,
-    stopCamera,
-  ]);
+        if (!mountedRef.current) {
+          return;
+        }
+
+        const scanner =
+          new Html5Qrcode(
+            containerId.current,
+          );
+
+        scannerRef.current = scanner;
+
+        const scannerConfig = {
+          fps: 10,
+          qrbox: {
+            width: 250,
+            height: 150,
+          },
+          aspectRatio: 1.7778,
+          disableFlip: false,
+        };
+
+        const onDecoded = (
+          decodedText: string,
+        ) => {
+          handleDetectedCode(decodedText);
+        };
+
+        const onDecodeError = () => {
+          // Scanner terus mencoba membaca
+          // frame berikutnya.
+        };
+
+        try {
+          await scanner.start(
+            {
+              facingMode: {
+                exact: 'environment',
+              },
+            },
+            scannerConfig,
+            onDecoded,
+            onDecodeError,
+          );
+        } catch (environmentError) {
+          console.warn(
+            'Kamera belakang tidak tersedia, mencoba kamera lain:',
+            environmentError,
+          );
+
+          try {
+            await scanner.stop();
+          } catch {
+            // ignore
+          }
+
+          try {
+            await scanner.clear();
+          } catch {
+            // ignore
+          }
+
+          const fallbackScanner =
+            new Html5Qrcode(
+              containerId.current,
+            );
+
+          scannerRef.current =
+            fallbackScanner;
+
+          try {
+            await fallbackScanner.start(
+              {
+                facingMode: 'user',
+              },
+              scannerConfig,
+              onDecoded,
+              onDecodeError,
+            );
+          } catch (frontCameraError) {
+            console.warn(
+              'Kamera depan tidak tersedia, mencari kamera perangkat:',
+              frontCameraError,
+            );
+
+            try {
+              await fallbackScanner.stop();
+            } catch {
+              // ignore
+            }
+
+            try {
+              await fallbackScanner.clear();
+            } catch {
+              // ignore
+            }
+
+            const cameras =
+              await Html5Qrcode.getCameras();
+
+            if (!cameras.length) {
+              throw new Error(
+                'Tidak ada kamera yang terdeteksi pada perangkat ini.',
+              );
+            }
+
+            const preferredCamera =
+              cameras.find(camera =>
+                /back|rear|environment|belakang/i.test(
+                  camera.label,
+                ),
+              ) ??
+              cameras[cameras.length - 1];
+
+            const deviceScanner =
+              new Html5Qrcode(
+                containerId.current,
+              );
+
+            scannerRef.current =
+              deviceScanner;
+
+            await deviceScanner.start(
+              preferredCamera.id,
+              scannerConfig,
+              onDecoded,
+              onDecodeError,
+            );
+          }
+        }
+
+        scanningRef.current = true;
+
+        if (mountedRef.current) {
+          setCameraReady(true);
+          setCameraError(null);
+        }
+      } catch (error) {
+        console.error(
+          'Gagal memulai kamera:',
+          error,
+        );
+
+        scanningRef.current = false;
+
+        const message =
+          error instanceof Error
+            ? error.message
+            : String(error);
+
+        if (mountedRef.current) {
+          setCameraError(
+            `Kamera tidak dapat digunakan. ${message}`,
+          );
+
+          setCameraReady(false);
+        }
+
+        try {
+          if (scannerRef.current) {
+            await scannerRef.current.clear();
+          }
+        } catch {
+          // ignore
+        }
+
+        scannerRef.current = null;
+      } finally {
+        startingRef.current = false;
+      }
+    },
+    [
+      handleDetectedCode,
+      stopCamera,
+    ],
+  );
 
   useEffect(() => {
     mountedRef.current = true;
@@ -280,7 +342,9 @@ export default function BarcodeScanner({
       mountedRef.current = false;
 
       if (usbTimerRef.current) {
-        clearTimeout(usbTimerRef.current);
+        clearTimeout(
+          usbTimerRef.current,
+        );
       }
 
       void stopCamera();
@@ -296,11 +360,12 @@ export default function BarcodeScanner({
 
     let cancelled = false;
 
-    const timer = window.setTimeout(() => {
-      if (!cancelled) {
-        void startCamera();
-      }
-    }, 150);
+    const timer =
+      window.setTimeout(() => {
+        if (!cancelled) {
+          void startCamera();
+        }
+      }, 150);
 
     return () => {
       cancelled = true;
@@ -351,7 +416,8 @@ export default function BarcodeScanner({
         !event.altKey &&
         !event.metaKey
       ) {
-        usbBufferRef.current += event.key;
+        usbBufferRef.current +=
+          event.key;
 
         if (usbTimerRef.current) {
           clearTimeout(
@@ -361,7 +427,8 @@ export default function BarcodeScanner({
 
         usbTimerRef.current =
           setTimeout(() => {
-            usbBufferRef.current = '';
+            usbBufferRef.current =
+              '';
           }, 300);
       }
     };
@@ -395,7 +462,8 @@ export default function BarcodeScanner({
   ) {
     event.preventDefault();
 
-    const code = manualCode.trim();
+    const code =
+      manualCode.trim();
 
     if (!code) return;
 
@@ -419,6 +487,7 @@ export default function BarcodeScanner({
 
     setCameraError(null);
     setCameraReady(false);
+
     setMode(nextMode);
   }
 
@@ -446,7 +515,7 @@ export default function BarcodeScanner({
     >
       <div
         className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto"
-        onClick={(event) =>
+        onClick={event =>
           event.stopPropagation()
         }
       >
@@ -602,7 +671,7 @@ export default function BarcodeScanner({
               <input
                 type="text"
                 value={manualCode}
-                onChange={(event) =>
+                onChange={event =>
                   setManualCode(
                     event.target.value,
                   )
