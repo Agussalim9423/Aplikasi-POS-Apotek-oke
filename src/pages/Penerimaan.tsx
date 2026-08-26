@@ -1638,94 +1638,41 @@ function GRForm({
 
   function calculateHppChanges() {
     return items
-      .filter(
-        (item) =>
-          item.unitPrice > 0 &&
-          Math.abs(
-            item.unitPrice -
-              Number(
-                item.medicine.buy_price ??
-                  0
-              )
-          ) > 0.01
-      )
-      .map((item) => {
-        const oldCost =
-          Number(
-            item.medicine.buy_price ??
-              0
-          );
+      .filter((item) => {
+        const oldCost = Number(item.medicine.buy_price ?? 0);
+        const oldRegular = Number(
+          item.medicine.price_regular ??
+            item.medicine.sell_price ??
+            0
+        );
+        const oldPrescription = Number(
+          item.medicine.price_prescription ??
+            item.medicine.price_regular ??
+            item.medicine.sell_price ??
+            0
+        );
+        const oldDoctor = Number(
+          item.medicine.price_doctor ??
+            item.medicine.price_regular ??
+            item.medicine.sell_price ??
+            0
+        );
+        const newCost = costPerUnit(item);
 
-        const receivedCost =
-          costPerUnit(item);
-
-        const regularMargin =
-          oldCost > 0
-            ? (
-                Number(
-                  item.medicine.price_regular ??
-                    item.medicine.sell_price ??
-                    0
-                ) - oldCost
-              ) / oldCost
-            : 0.3;
-
-        const prescriptionMargin =
-          oldCost > 0
-            ? (
-                Number(
-                  item.medicine.price_prescription ??
-                    item.medicine.sell_price ??
-                    0
-                ) - oldCost
-              ) / oldCost
-            : regularMargin;
-
-        const doctorMargin =
-          oldCost > 0
-            ? (
-                Number(
-                  item.medicine.price_doctor ??
-                    item.medicine.price_regular ??
-                    item.medicine.sell_price ??
-                    0
-                ) - oldCost
-              ) / oldCost
-            : regularMargin;
-
-        return {
-          medicine: item.medicine,
-          receivedCost,
-
-          regularPrice: Math.round(
-            receivedCost *
-              (1 +
-                Math.max(
-                  0,
-                  regularMargin
-                ))
-          ),
-
-          prescriptionPrice:
-            Math.round(
-              receivedCost *
-                (1 +
-                  Math.max(
-                    0,
-                    prescriptionMargin
-                  ))
-            ),
-
-          doctorPrice: Math.round(
-            receivedCost *
-              (1 +
-                Math.max(
-                  0,
-                  doctorMargin
-                ))
-          ),
-        };
-      });
+        return (
+          Math.abs(newCost - oldCost) > 0.01 ||
+          Math.abs(Number(item.priceRegular) - oldRegular) > 0.01 ||
+          Math.abs(Number(item.pricePrescription) - oldPrescription) > 0.01 ||
+          Math.abs(Number(item.priceDoctor) - oldDoctor) > 0.01
+        );
+      })
+      .map((item) => ({
+        medicine: item.medicine,
+        receivedCost: costPerUnit(item),
+        regularPrice: Number(item.priceRegular) || 0,
+        prescriptionPrice: Number(item.pricePrescription) || 0,
+        doctorPrice: Number(item.priceDoctor) || 0,
+      }));
   }
 
   async function save(
@@ -2579,28 +2526,68 @@ function GRForm({
                       />
                     </td>
 
-                    <td className="px-2 py-1.5 text-right text-xs text-teal-700 font-semibold">
-                      {formatCurrency(
-                        projectedPrices(
-                          item
-                        ).regular
-                      )}
+                    <td className="px-2 py-1.5">
+                      <input
+                        type="number"
+                        min="0"
+                        value={item.priceRegular}
+                        onChange={(e) =>
+                          setItems((prev) =>
+                            prev.map((it, i) =>
+                              i === idx
+                                ? {
+                                    ...it,
+                                    priceRegular: Number(e.target.value),
+                                    sellPrice: Number(e.target.value),
+                                  }
+                                : it
+                            )
+                          )
+                        }
+                        className="w-24 px-1 py-1 border border-teal-200 rounded text-xs text-right text-teal-700 font-semibold"
+                      />
                     </td>
 
-                    <td className="px-2 py-1.5 text-right text-xs text-blue-700 font-semibold">
-                      {formatCurrency(
-                        projectedPrices(
-                          item
-                        ).prescription
-                      )}
+                    <td className="px-2 py-1.5">
+                      <input
+                        type="number"
+                        min="0"
+                        value={item.pricePrescription}
+                        onChange={(e) =>
+                          setItems((prev) =>
+                            prev.map((it, i) =>
+                              i === idx
+                                ? {
+                                    ...it,
+                                    pricePrescription: Number(e.target.value),
+                                  }
+                                : it
+                            )
+                          )
+                        }
+                        className="w-24 px-1 py-1 border border-blue-200 rounded text-xs text-right text-blue-700 font-semibold"
+                      />
                     </td>
 
-                    <td className="px-2 py-1.5 text-right text-xs text-indigo-700 font-semibold">
-                      {formatCurrency(
-                        projectedPrices(
-                          item
-                        ).doctor
-                      )}
+                    <td className="px-2 py-1.5">
+                      <input
+                        type="number"
+                        min="0"
+                        value={item.priceDoctor}
+                        onChange={(e) =>
+                          setItems((prev) =>
+                            prev.map((it, i) =>
+                              i === idx
+                                ? {
+                                    ...it,
+                                    priceDoctor: Number(e.target.value),
+                                  }
+                                : it
+                            )
+                          )
+                        }
+                        className="w-24 px-1 py-1 border border-indigo-200 rounded text-xs text-right text-indigo-700 font-semibold"
+                      />
                     </td>
 
                     <td className="px-2 py-1.5">
@@ -2814,14 +2801,14 @@ function GRForm({
 
                 <div>
                   <h3 className="font-bold text-gray-900">
-                    Harga beli berubah
+                    Harga master berubah
                   </h3>
 
                   <p className="text-sm text-gray-500 mt-1">
                     Apakah Anda ingin
-                    memperbarui HPP & Harga
-                    Jual obat ini di master
-                    data?
+                    memperbarui HPP dan harga jual
+                    Umum, Resep, serta Dokter
+                    pada master data?
                   </p>
                 </div>
               </div>
