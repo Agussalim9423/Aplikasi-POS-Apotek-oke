@@ -3,7 +3,7 @@ import { tenantFrom, formatCurrency, generateInvoiceNumber } from '@/lib/supabas
 import { useAuth } from '@/lib/auth';
 import type { Medicine, Patient, Doctor, MedicineBatch, MedicineUnit } from '@/lib/supabase';
 import BarcodeScanner from '@/components/BarcodeScanner';
-import { Search, Plus, Minus, Trash2, ChevronDown, Printer, CheckCircle, ScanLine, Pause, Play, Tag, X, UserPlus, CreditCard } from 'lucide-react';
+import { Search, Plus, Minus, Trash2, ChevronDown, Printer, CheckCircle, ScanLine, Pause, Play, Tag, X, UserPlus, CreditCard, Clock, LockKeyhole, Banknote, LogOut } from 'lucide-react';
 
 const CATEGORIES = ['Obat Bebas', 'Obat Bebas Terbatas', 'Obat Keras', 'Obat Narkotika', 'Obat Herbal', 'Suplemen', 'Minuman', 'Alat Kesehatan', 'Lainnya'];
 
@@ -31,6 +31,22 @@ type ParkedSale = {
 };
 
 type PaymentPart = { method: 'cash' | 'qris' | 'transfer' | 'card'; amount: string; bank: string };
+
+type Shift = {
+  id: string;
+  tenant_id: string;
+  shift_type: 'morning' | 'evening';
+  opened_by: string | null;
+  opened_at: string;
+  opening_cash: number;
+  closed_by: string | null;
+  closed_at: string | null;
+  expected_cash: number | null;
+  actual_cash: number | null;
+  cash_difference: number | null;
+  status: 'open' | 'closed';
+  notes: string | null;
+};
 
 type ReceiptData = {
   invoiceNumber: string;
@@ -276,6 +292,15 @@ export default function KasirPOS() {
   const [taxEnabled, setTaxEnabled] = useState(false);
   const [taxPercent, setTaxPercent] = useState(11);
   const [loading, setLoading] = useState(false);
+  const [currentShift, setCurrentShift] = useState<Shift | null>(null);
+  const [shiftLoading, setShiftLoading] = useState(true);
+  const [showOpenShiftModal, setShowOpenShiftModal] = useState(false);
+  const [showCloseShiftModal, setShowCloseShiftModal] = useState(false);
+  const [openingShiftType, setOpeningShiftType] = useState<'morning' | 'evening'>(new Date().getHours() < 15 ? 'morning' : 'evening');
+  const [openingCash, setOpeningCash] = useState('');
+  const [actualClosingCash, setActualClosingCash] = useState('');
+  const [shiftSummary, setShiftSummary] = useState({ sales: 0, cashSales: 0, nonCashSales: 0, change: 0, expectedCash: 0, transactions: 0 });
+  const [shiftSaving, setShiftSaving] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [completedReceipt, setCompletedReceipt] = useState<ReceiptData | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
@@ -290,8 +315,130 @@ export default function KasirPOS() {
   useEffect(() => {
     loadData();
     loadPharmacy();
+    void loadCurrentShift();
     searchRef.current?.focus();
   }, []);
+
+  async function loadCurrentShift() {
+    setShiftLoading(true);
+    try {
+      const { data, error } = await tenantFrom('cash_register_shifts')
+        .select('*')
+        .eq('status', 'open')
+        .order('opened_at', { ascending: false })
+        .limit(1);
+      if (error) throw error;
+      const shift = (data?.[0] ?? null) as Shift | null;
+      setCurrentShift(shift);
+      setShowOpenShiftModal(!shift);
+      if (shift) await loadShiftSummary(shift);
+    } catch (error) {
+      console.error('Gagal memuat shift kasir:', error);
+      alert(`Gagal memuat shift kasir: ${getDatabaseErrorMessage(error)}`);
+      setShowOpenShiftModal(true);
+    } finally {
+      setShiftLoading(false);
+    }
+  }
+
+  async function loadShiftSummary(shift: Shift) {
+    const { data, error } = await tenantFrom('sales')
+      .select('total, paid_amount, change_amount, payment_method, payment_details')
+      .eq('shift_id', shift.id);
+    if (error) {
+      if ((error as { code?: string }).code === 'PGRST204') return;
+      throw error;
+    }
+    let sales = 0; let cashSales = 0; let nonCashSales = 0; let changeTotal = 0;
+    for (const sale of data ?? []) {
+      const total = Number(sale.total ?? 0);
+      sales += total;
+      const details = Array.isArray(sale.payment_details) ? sale.payment_details as PaymentPart[] : null;
+      if (details) {
+        for (const part of details) {
+          const amount = Number(part.amount) || 0;
+          if (part.method === 'cash') cashSales += amount; else nonCashSales += amount;
+        }
+      } else if (sale.payment_method === 'cash') {
+        cashSales += Math.max(0, Number(sale.paid_amount ?? 0));
+      } else {
+        nonCashSales += Number(sale.paid_amount ?? total);
+      }
+      changeTotal += Number(sale.change_amount ?? 0);
+    }
+    setShiftSummary({ sales, cashSales, nonCashSales, change: changeTotal, expectedCash: Number(shift.opening_cash ?? 0) + cashSales - changeTotal, transactions: (data ?? []).length });
+  }
+
+  async function openShift() {
+    const cash = Math.max(0, Number(openingCash) || 0);
+    if (!profile?.tenant_id) { alert('Tenant kasir tidak ditemukan. Silakan login ulang.'); return; }
+    setShiftSaving(true);
+    try {
+      const { data: existing } = await tenantFrom('cash_register_shifts').select('*').eq('status', 'open').limit(1);
+      if (existing?.[0]) {
+        setCurrentShift(existing[0] as Shift);
+        setShowOpenShiftModal(false);
+        return;
+      }
+      const { data, error } = await tenantFrom('cash_register_shifts')
+        .insert({ shift_type: openingShiftType, opened_by: profile.id, opening_cash: cash, status: 'open' })
+        .select()
+        .single();
+      if (error) throw error;
+      setCurrentShift(data as Shift);
+      setOpeningCash('');
+      setShowOpenShiftModal(false);
+      await loadShiftSummary(data as Shift);
+    } catch (error) {
+      alert(`Gagal membuka shift: ${getDatabaseErrorMessage(error)}`);
+    } finally {
+      setShiftSaving(false);
+    }
+  }
+
+  async function prepareCloseShift() {
+    if (!currentShift) return;
+    setShiftSaving(true);
+    try {
+      await loadShiftSummary(currentShift);
+      setActualClosingCash('');
+      setShowCloseShiftModal(true);
+    } catch (error) {
+      alert(`Gagal menghitung laporan shift: ${getDatabaseErrorMessage(error)}`);
+    } finally {
+      setShiftSaving(false);
+    }
+  }
+
+  async function closeShift() {
+    if (!currentShift || !profile?.id) return;
+    const actual = Math.max(0, Number(actualClosingCash) || 0);
+    const expected = shiftSummary.expectedCash;
+    const difference = actual - expected;
+    if (actualClosingCash.trim() === '') { alert('Uang kas fisik wajib diisi.'); return; }
+    setShiftSaving(true);
+    try {
+      const { error } = await tenantFrom('cash_register_shifts').update({
+        closed_by: profile.id, closed_at: new Date().toISOString(), expected_cash: expected, actual_cash: actual, cash_difference: difference, status: 'closed'
+      }).eq('id', currentShift.id);
+      if (error) throw error;
+      setCurrentShift(null);
+      setShowCloseShiftModal(false);
+      setShowOpenShiftModal(true);
+      setOpeningShiftType(new Date().getHours() < 15 ? 'morning' : 'evening');
+      setActualClosingCash('');
+      alert(`Shift ${currentShift.shift_type === 'morning' ? 'Pagi' : 'Malam'} berhasil ditutup.
+
+Penjualan: ${formatCurrency(shiftSummary.sales)}
+Kas yang seharusnya: ${formatCurrency(expected)}
+Kas fisik: ${formatCurrency(actual)}
+Selisih: ${formatCurrency(difference)}`);
+    } catch (error) {
+      alert(`Gagal menutup shift: ${getDatabaseErrorMessage(error)}`);
+    } finally {
+      setShiftSaving(false);
+    }
+  }
 
   async function loadPharmacy() {
     const { data } = await tenantFrom('settings').select('key, value');
@@ -536,6 +683,7 @@ async function loadData() {
   }
 
   async function handleCheckout() {
+    if (!currentShift) { alert('Belum ada shift yang dibuka. Silakan buka shift terlebih dahulu.'); setShowOpenShiftModal(true); return; }
     if (cart.length === 0) return;
     if (saleType === 'prescription' && (!selectedPatient && !patientName.trim() || !doctorName.trim() || !doctorSip.trim())) {
       setPrescriptionError('Penjualan resep wajib mengisi Nama Dokter, Nama Pasien, dan No. SIP Dokter.');
@@ -606,6 +754,8 @@ async function loadData() {
         paid_amount: paidAmount,
         change_amount: change,
         cashier_name: profile?.full_name ?? 'Kasir',
+        shift_id: currentShift.id,
+        payment_details: paymentParts.map(part => ({ method: part.method, amount: Number(part.amount) || 0, bank: part.bank || '' })),
       }).select().single();
 
       if (saleError) throw new Error(`Gagal membuat invoice: ${getDatabaseErrorMessage(saleError)}`);
@@ -745,7 +895,13 @@ async function loadData() {
       {/* Left: Product Search */}
       <div className="flex-1 flex flex-col bg-gray-50 overflow-hidden">
         <div className="p-4 bg-white border-b border-gray-100">
-          <h2 className="font-bold text-gray-800 text-lg mb-3">Kasir POS</h2>
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div>
+              <h2 className="font-bold text-gray-800 text-lg">Kasir POS</h2>
+              {currentShift && <p className="text-xs text-gray-500 mt-0.5">Shift {currentShift.shift_type === 'morning' ? 'Pagi' : 'Malam'} · Buka {new Date(currentShift.opened_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</p>}
+            </div>
+            {currentShift && <button type="button" onClick={() => void prepareCloseShift()} className="flex items-center gap-1.5 px-3 py-2 border border-red-200 text-red-600 hover:bg-red-50 rounded-lg text-xs font-semibold"><LockKeyhole size={14} /> Tutup Shift</button>}
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative flex-1 min-w-[180px]">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -794,7 +950,7 @@ async function loadData() {
             <button
               key={med.id}
               onClick={() => addToCart(med)}
-              disabled={med.stock <= 0}
+              disabled={med.stock <= 0 || !currentShift}
               className={`text-left bg-white border rounded-xl p-3 transition-all hover:shadow-md hover:border-teal-300 active:scale-95 ${
                 med.stock <= 0 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
               }`}
@@ -993,8 +1149,8 @@ async function loadData() {
           {taxEnabled && <div className="flex justify-between text-sm text-gray-500"><span>PPN ({taxPercent}%)</span><span>{formatCurrency(taxAmount)}</span></div>}
 
           <div className="flex gap-2">
-            <button type="button" onClick={parkSale} disabled={cart.length === 0} className="flex-1 border border-amber-300 text-amber-700 hover:bg-amber-50 disabled:opacity-40 font-semibold py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"><Pause size={15} /> Parkir</button>
-            <button type="button" onClick={() => setShowPaymentModal(true)} disabled={cart.length === 0} className="flex-[2] bg-teal-500 hover:bg-teal-600 disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"><CreditCard size={16} /> Pembayaran</button>
+            <button type="button" onClick={parkSale} disabled={cart.length === 0 || !currentShift} className="flex-1 border border-amber-300 text-amber-700 hover:bg-amber-50 disabled:opacity-40 font-semibold py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"><Pause size={15} /> Parkir</button>
+            <button type="button" onClick={() => setShowPaymentModal(true)} disabled={cart.length === 0 || !currentShift} className="flex-[2] bg-teal-500 hover:bg-teal-600 disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"><CreditCard size={16} /> Pembayaran</button>
           </div>
           <div className="relative">
             <select value="" onChange={e => resumeSale(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-400">
@@ -1051,6 +1207,38 @@ async function loadData() {
             <div className="flex items-center justify-between mb-4"><h3 className="text-lg font-bold text-gray-900">Tambah Pasien Cepat</h3><button onClick={() => setShowQuickPatient(false)} className="text-gray-400 hover:text-gray-700"><X size={20} /></button></div>
             <div className="space-y-3"><input value={quickPatientName} onChange={e => setQuickPatientName(e.target.value)} placeholder="Nama pasien *" className="input" /><input value={quickPatientPhone} onChange={e => setQuickPatientPhone(e.target.value)} placeholder="No. telepon" className="input" /><select value={quickPatientGender} onChange={e => setQuickPatientGender(e.target.value as 'L' | 'P')} className="input"><option value="L">Laki-laki</option><option value="P">Perempuan</option></select></div>
             <button onClick={quickAddPatient} disabled={!quickPatientName.trim()} className="w-full mt-4 bg-teal-500 hover:bg-teal-600 disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl">Simpan Pasien</button>
+          </div>
+        </div>
+      )}
+
+      {showOpenShiftModal && (
+        <div className="fixed inset-0 z-[80] bg-gray-900/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center gap-3 mb-5"><div className="w-11 h-11 rounded-xl bg-teal-100 flex items-center justify-center"><Clock size={22} className="text-teal-600" /></div><div><h3 className="text-lg font-bold text-gray-900">Buka Shift Kasir</h3><p className="text-sm text-gray-500">Masukkan uang kembalian awal sebelum transaksi.</p></div></div>
+            <div className="space-y-4">
+              <div><label className="text-xs font-semibold text-gray-600">Shift</label><div className="grid grid-cols-2 gap-2 mt-1"><button type="button" onClick={() => setOpeningShiftType('morning')} className={`py-2.5 rounded-lg border text-sm font-semibold ${openingShiftType === 'morning' ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-gray-200 text-gray-600'}`}>Pagi</button><button type="button" onClick={() => setOpeningShiftType('evening')} className={`py-2.5 rounded-lg border text-sm font-semibold ${openingShiftType === 'evening' ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-gray-200 text-gray-600'}`}>Malam</button></div></div>
+              <div><label className="text-xs font-semibold text-gray-600">Uang Kembalian Awal</label><div className="relative mt-1"><Banknote size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" /><input autoFocus type="number" min="0" value={openingCash} onChange={e => setOpeningCash(e.target.value)} placeholder="Contoh: 500000" className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400" /></div></div>
+              <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-xs text-blue-700">Uang awal ini bukan penjualan. Saat shift ditutup, sistem akan menghitung uang yang seharusnya tersedia = uang awal + penerimaan tunai - kembalian.</div>
+              <button type="button" onClick={() => void openShift()} disabled={shiftSaving || shiftLoading} className="w-full bg-teal-500 hover:bg-teal-600 disabled:opacity-50 text-white py-3 rounded-xl font-semibold">{shiftSaving ? 'Membuka shift...' : 'Buka Shift & Mulai Transaksi'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCloseShiftModal && currentShift && (
+        <div className="fixed inset-0 z-[80] bg-gray-900/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
+            <div className="flex items-center justify-between mb-5"><div><h3 className="text-lg font-bold text-gray-900">Tutup Shift {currentShift.shift_type === 'morning' ? 'Pagi' : 'Malam'}</h3><p className="text-sm text-gray-500">Collect uang hasil penjualan dan cocokkan kas fisik.</p></div><button onClick={() => setShowCloseShiftModal(false)} className="text-gray-400 hover:text-gray-700"><X size={20} /></button></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-500">Transaksi</p><p className="font-bold text-gray-900">{shiftSummary.transactions}</p></div>
+              <div className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-500">Total Penjualan</p><p className="font-bold text-teal-600">{formatCurrency(shiftSummary.sales)}</p></div>
+              <div className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-500">Tunai Masuk</p><p className="font-bold text-gray-900">{formatCurrency(shiftSummary.cashSales)}</p></div>
+              <div className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-500">Kembalian</p><p className="font-bold text-gray-900">{formatCurrency(shiftSummary.change)}</p></div>
+            </div>
+            <div className="mt-4 p-4 rounded-xl bg-teal-50 border border-teal-100"><div className="flex justify-between text-sm"><span>Uang awal</span><b>{formatCurrency(currentShift.opening_cash)}</b></div><div className="flex justify-between text-base font-bold mt-2"><span>Kas seharusnya</span><span className="text-teal-700">{formatCurrency(shiftSummary.expectedCash)}</span></div></div>
+            <div className="mt-4"><label className="text-xs font-semibold text-gray-600">Kas fisik yang dikumpulkan</label><input autoFocus type="number" min="0" value={actualClosingCash} onChange={e => setActualClosingCash(e.target.value)} placeholder="Masukkan hasil hitung uang fisik" className="w-full mt-1 px-3 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400" /></div>
+            {actualClosingCash.trim() !== '' && <div className={`mt-3 p-3 rounded-lg text-sm font-semibold ${(Number(actualClosingCash) || 0) - shiftSummary.expectedCash === 0 ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>Selisih kas: {formatCurrency((Number(actualClosingCash) || 0) - shiftSummary.expectedCash)}</div>}
+            <button type="button" onClick={() => void closeShift()} disabled={shiftSaving || actualClosingCash.trim() === ''} className="w-full mt-4 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2"><LogOut size={16} /> {shiftSaving ? 'Menyimpan...' : 'Collect & Tutup Shift'}</button>
           </div>
         </div>
       )}

@@ -51,6 +51,7 @@ const TENANT_TABLES =
     'medicine_units',
     'app_users',
     'operational_expenses',
+    'cash_register_shifts',
   ]);
 
 /*
