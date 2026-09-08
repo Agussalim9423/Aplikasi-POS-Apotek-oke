@@ -1,0 +1,10 @@
+{
+  "name": "POS Apotek",
+  "short_name": "POS Apotek",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "description": "Sistem POS Apotek",
+  "icons": []
+}

@@ -1,0 +1,284 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .input {
+    @apply w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white;
+  }
+}
+
+@layer utilities {
+  .animate-fade-in {
+    animation: fadeIn 0.2s ease-out;
+  }
+  .animate-slide-in {
+    animation: slideIn 0.3s ease-out;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideIn {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+
+/* Responsive/touch baseline for phones and tablets. */
+html, body, #root { min-height: 100%; }
+body { margin: 0; -webkit-text-size-adjust: 100%; }
+button, input, select, textarea { font: inherit; }
+button, a, input, select, textarea { touch-action: manipulation; }
+
+@media (max-width: 767px) {
+  /* Give dense desktop-first pages comfortable mobile spacing. */
+  main .p-6 { padding: 1rem !important; }
+  main .p-5 { padding: 1rem !important; }
+  main .px-6 { padding-left: 1rem !important; padding-right: 1rem !important; }
+  main .text-2xl { font-size: 1.25rem !important; line-height: 1.75rem !important; }
+
+  /* Prevent fixed-width controls from overflowing narrow screens. */
+  main .w-96 { width: min(100%, 24rem) !important; }
+  main .w-36 { width: 8rem !important; }
+
+  /* Comfortable minimum tap targets. */
+  main button, main select { min-height: 40px; }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  button, [role="button"], input, select, textarea { min-height: 40px; }
+}
+
+
+/* =========================================================
+   MOBILE / TABLET UX FINAL
+   Optimized for 360px phones through iPad and desktop.
+   ========================================================= */
+@media (max-width: 767px) {
+  html, body, #root { width: 100%; overflow-x: hidden; }
+  body { overscroll-behavior-x: none; }
+
+  /* Tables remain accessible but become denser and easier to swipe. */
+  main table { min-width: 640px; }
+  main th, main td { white-space: nowrap; }
+  main .overflow-x-auto { -webkit-overflow-scrolling: touch; scrollbar-width: thin; }
+
+  /* Prevent common desktop control groups from forcing horizontal overflow. */
+  main .flex.items-center.gap-3 { min-width: 0; }
+  main input, main select, main textarea { max-width: 100%; }
+
+  /* Modals use almost the whole phone screen and can scroll internally. */
+  main .fixed.inset-0 > div,
+  main .fixed.inset-0 > section { max-width: calc(100vw - 1rem) !important; }
+
+  /* Larger, safer action buttons on touch screens. */
+  main button { -webkit-tap-highlight-color: transparent; }
+
+  /* Kasir: keep product search and cart usable within one viewport. */
+  .kasir-product-panel { min-height: 42vh !important; max-height: 46vh; }
+  .kasir-product-panel .kasir-toolbar { flex-shrink: 0; }
+  .kasir-cart-panel { height: 54vh !important; max-height: 58vh; }
+  .kasir-cart-panel > .flex-1 { min-height: 0; }
+
+  /* Kasir search controls stack cleanly on narrow phones. */
+  .kasir-toolbar > div:nth-child(2) { flex-wrap: wrap; }
+  .kasir-toolbar > div:nth-child(2) > .relative.flex-1 { flex-basis: 100%; }
+  .kasir-toolbar > div:nth-child(2) > .relative:not(.flex-1) { flex: 1 1 0; }
+  .kasir-toolbar > div:nth-child(2) > button { flex: 1 1 0; justify-content: center; }
+
+  /* Don't let the cash adjustment row become too cramped. */
+  .kasir-cart-panel .grid.grid-cols-\[1fr_130px\] { grid-template-columns: minmax(0, 1fr) !important; }
+
+  /* Toasts stay inside the screen on phones. */
+  main .fixed.top-6.right-6 { top: 4.5rem !important; right: .75rem !important; left: .75rem !important; }
+}
+
+@media (min-width: 768px) and (max-width: 1279px) {
+  /* Tablet/iPad: use two columns where space allows, without desktop overflow. */
+}
+
+@media (max-width: 380px) {
+  .kasir-product-panel { min-height: 40vh !important; max-height: 44vh; }
+  .kasir-cart-panel { height: 56vh !important; max-height: 60vh; }
+  .kasir-toolbar { padding: .75rem !important; }
+  .kasir-product-panel > .flex-1 { padding: .75rem !important; }
+  .kasir-cart-panel > div { padding-left: .75rem !important; padding-right: .75rem !important; }
+}
+
+/* iPad Safari safe-area support. */
+@supports (padding: max(0px)) {
+  @media (max-width: 1024px) {
+    main { padding-bottom: max(0px, env(safe-area-inset-bottom)); }
+  }
+}
+
+
+/* =========================================================
+   KASIR MOBILE: PRODUCT-FIRST + CART BOTTOM SHEET
+   ========================================================= */
+.mobile-cart-launcher,
+.mobile-cart-sheet-header,
+.mobile-cart-close,
+.mobile-cart-backdrop { display: none; }
+
+@media (max-width: 767px) {
+  /* Use the actual viewport height and leave only a compact footer/header chrome. */
+  .app-footer { padding-top: .4rem !important; padding-bottom: .4rem !important; }
+  .app-footer p { font-size: 10px !important; line-height: 1.2; }
+
+  /* Product selection gets the majority of the screen. */
+  .kasir-product-panel:not(.mobile-cart-open) {
+    min-height: 0 !important;
+    height: 100% !important;
+    max-height: none !important;
+  }
+  .kasir-product-panel:not(.mobile-cart-open) .kasir-product-list,
+  .kasir-product-panel:not(.mobile-cart-open) > .flex-1 {
+    min-height: 0;
+  }
+
+  /* A single, easy-to-reach cart action remains above the phone bottom edge. */
+  .mobile-cart-launcher {
+    display: flex !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+    position: fixed;
+    left: .75rem;
+    right: .75rem;
+    bottom: calc(.7rem + env(safe-area-inset-bottom));
+    z-index: 9999;
+    min-height: 52px;
+    padding: .75rem 1rem;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    border: 1px solid rgba(13, 148, 136, .18);
+    border-radius: 16px;
+    background: rgba(255,255,255,.97);
+    box-shadow: 0 10px 28px rgba(15,23,42,.16);
+    color: #0f766e;
+    font-size: 14px;
+    font-weight: 700;
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+  }
+  .mobile-cart-badge {
+    position: absolute;
+    top: -7px;
+    right: -8px;
+    min-width: 19px;
+    height: 19px;
+    padding: 0 5px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #ef4444;
+    color: white;
+    border: 2px solid white;
+    font-size: 10px;
+    line-height: 1;
+  }
+
+  /* Darkened area behind the cart sheet. */
+  .mobile-cart-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: rgba(15,23,42,.42);
+  }
+
+  /* Cart becomes a full-width bottom sheet rather than consuming half the product list. */
+  .kasir-cart-panel.mobile-cart-sheet-open {
+    display: flex !important;
+    position: fixed !important;
+    z-index: 60;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100% !important;
+    height: min(88dvh, 760px) !important;
+    max-height: calc(100dvh - 1rem) !important;
+    border: 0 !important;
+    border-radius: 20px 20px 0 0;
+    box-shadow: 0 -12px 35px rgba(15,23,42,.2);
+    overflow: hidden;
+    padding-bottom: env(safe-area-inset-bottom);
+    animation: mobileCartUp .2s ease-out;
+  }
+  .kasir-cart-panel:not(.mobile-cart-sheet-open) {
+    display: none !important;
+  }
+  .mobile-cart-sheet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .75rem;
+    flex-shrink: 0;
+    padding: .75rem 1rem;
+    border-bottom: 1px solid #f1f5f9;
+    background: #fff;
+  }
+  .mobile-cart-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 42px;
+    height: 42px;
+    min-height: 42px;
+    flex-shrink: 0;
+    border: 0;
+    border-radius: 12px;
+    background: #f1f5f9;
+    color: #475569;
+  }
+
+  /* Keep patient, items and payment summary independently usable. */
+  .kasir-cart-panel.mobile-cart-sheet-open > .flex-1 {
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .kasir-cart-panel.mobile-cart-sheet-open > .border-t.border-gray-100.p-4 {
+    flex-shrink: 0;
+    max-height: 46%;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Larger controls for touch keyboards/fingers. */
+  .kasir-cart-panel input,
+  .kasir-cart-panel select,
+  .kasir-cart-panel button { min-height: 42px; }
+  .kasir-cart-panel .w-6.h-6 { min-width: 36px; min-height: 36px; width: 36px; height: 36px; }
+  .kasir-cart-panel .w-10 { width: 3rem; }
+
+  /* On narrow screens make prescription detail fields stack. */
+  .kasir-cart-panel .grid.grid-cols-2 { grid-template-columns: 1fr; }
+
+  /* Product cards: one column on very small phones, two on larger phones. */
+  .kasir-product-panel > .flex-1.grid { padding-bottom: 5.5rem !important; }
+  .kasir-product-panel > .flex-1.grid > button { min-height: 84px; }
+}
+
+@media (min-width: 420px) and (max-width: 767px) {
+  .kasir-product-panel > .flex-1.grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+}
+
+@keyframes mobileCartUp {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}

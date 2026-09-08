@@ -1,0 +1,1385 @@
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { tenantFrom, formatCurrency, generateInvoiceNumber } from '@/lib/supabase';
+import { useAuth } from '@/lib/auth';
+import type { Medicine, Patient, Doctor, MedicineBatch, MedicineUnit } from '@/lib/supabase';
+import BarcodeScanner from '@/components/BarcodeScanner';
+import { printHtml } from '@/lib/print';
+import { Search, Plus, Minus, Trash2, ChevronDown, Printer, CheckCircle, ScanLine, Pause, Play, Tag, X, UserPlus, CreditCard, Clock, LockKeyhole, Banknote, LogOut, ShoppingCart } from 'lucide-react';
+
+const CATEGORIES = ['Obat Bebas', 'Obat Bebas Terbatas', 'Obat Keras', 'Obat Narkotika', 'Obat Herbal', 'Suplemen', 'Minuman', 'Alat Kesehatan', 'Lainnya'];
+
+type CartItem = {
+  medicine: Medicine;
+  quantity: number;
+  discount: number;
+  usage: string;
+  maxQuantity: number | null;
+  unit: MedicineUnit | null;
+};
+
+type ParkedSale = {
+  id: string;
+  label: string;
+  createdAt: string;
+  cart: CartItem[];
+  saleType: 'regular' | 'prescription' | 'doctor';
+  patient: Patient | null;
+  patientName: string;
+  doctor: Doctor | null;
+  doctorName: string;
+  doctorSip: string;
+  discount: number;
+  manualRounding: string;
+  roundingDescription: string;
+};
+
+type PaymentPart = { method: 'cash' | 'qris' | 'transfer' | 'card'; amount: string; bank: string };
+
+type Shift = {
+  id: string;
+  tenant_id: string;
+  shift_type: 'morning' | 'evening';
+  opened_by: string | null;
+  opened_at: string;
+  opening_cash: number;
+  closed_by: string | null;
+  closed_at: string | null;
+  expected_cash: number | null;
+  actual_cash: number | null;
+  cash_difference: number | null;
+  status: 'open' | 'closed';
+  notes: string | null;
+};
+
+type ReceiptData = {
+  invoiceNumber: string;
+  patientName: string;
+  doctorName: string;
+  cashierName: string;
+  paymentMethod: string;
+  subtotal: number;
+  discount: number;
+  roundingAmount: number;
+  roundingDescription: string;
+  taxPercent: number;
+  taxAmount: number;
+  total: number;
+  paidAmount: number;
+  changeAmount: number;
+  items: { name: string; qty: number; price: number; total: number; usage: string }[];
+  doctorSip: string;
+  pharmacy: {
+    name: string;
+    address: string;
+    phone: string;
+    email: string;
+    pharmacistName: string;
+    sipaNumber: string;
+    siaNumber: string;
+  };
+};
+
+const PAYMENT_LABELS: Record<string, string> = {
+  cash: 'Tunai', qris: 'QRIS', transfer: 'Transfer Bank', card: 'Kartu Debit/Kredit',
+};
+
+const BANKS = ['BCA', 'BNI', 'BRI', 'Mandiri', 'BSI', 'CIMB Niaga', 'Lainnya'];
+
+function printLabel(data: { pharmacyName: string; date: string; patientName: string; medicineName: string; quantity: number; usage: string }) {
+  const html = `<!doctype html><html><head><title>Etiket</title><style>@page{size:70mm 35mm;margin:0}*{box-sizing:border-box}body{font-family:Arial,sans-serif;width:70mm;height:35mm;margin:0;padding:4mm;color:#111}.brand{font-size:12px;font-weight:700}.date{font-size:9px;color:#555}.patient{font-size:11px;margin:2mm 0;border-bottom:1px solid #222;padding-bottom:1mm}.medicine{font-size:12px;font-weight:700}.qty{font-size:10px;margin-top:1mm}.usage{font-size:10px;margin-top:2mm;font-weight:600}</style></head><body><div class="brand">${escapeHtml(data.pharmacyName)}</div><div class="date">${escapeHtml(data.date)}</div><div class="patient">Pasien: ${escapeHtml(data.patientName)}</div><div class="medicine">${escapeHtml(data.medicineName)}</div><div class="qty">Jumlah: ${data.quantity}</div><div class="usage">Aturan pakai: ${escapeHtml(data.usage || '-')}</div></body></html>`;
+  printHtml(html);
+}
+
+const RECEIPT_WIDTH = 58; // roll width; printable content is kept within a safe 48mm area
+
+function printReceipt(data: ReceiptData, onPrinted?: () => void) {
+  const now = new Date();
+  const dateStr = now.toLocaleString('id-ID', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  });
+  const p = data.pharmacy;
+  const cashier = data.cashierName || 'Kasir';
+
+  // 58mm rolls commonly have only about 48mm of printable width.
+  // Keeping the content inside that safe area prevents clipped/faded columns.
+  const safeWidth = 48;
+  const line = '-'.repeat(42);
+  const padRight = (text: string, width: number) => text.slice(0, width).padEnd(width, ' ');
+  const padLeft = (text: string, width: number) => text.slice(-width).padStart(width, ' ');
+  const twoCol = (left: string, right: string) => {
+    const maxLeft = Math.max(1, 42 - right.length - 1);
+    return `${padRight(left, maxLeft)} ${padLeft(right, Math.min(right.length, 42 - maxLeft - 1))}`;
+  };
+  const center = (text: string, width = 42) => {
+    const value = text.slice(0, width);
+    const left = Math.max(0, Math.floor((width - value.length) / 2));
+    return `${' '.repeat(left)}${value}`;
+  };
+
+  const lines: string[] = [];
+  lines.push(center(p.name, 42));
+  if (p.address) lines.push(center(p.address, 42));
+  if (p.phone) lines.push(center(`Telp: ${p.phone}`, 42));
+  if (p.email) lines.push(center(p.email, 42));
+  if (p.pharmacistName) lines.push(center(`Apoteker: ${p.pharmacistName}`, 42));
+  if (p.sipaNumber) lines.push(center(`SIPA: ${p.sipaNumber}`, 42));
+  if (p.siaNumber) lines.push(center(`SIA: ${p.siaNumber}`, 42));
+  lines.push(line);
+
+  lines.push(twoCol('No', data.invoiceNumber));
+  lines.push(twoCol('Tgl', dateStr));
+  lines.push(twoCol('Kasir', cashier));
+  lines.push(twoCol('Pasien', data.patientName || 'Umum'));
+  if (data.doctorName) lines.push(twoCol('Dokter', data.doctorName));
+  if (data.doctorSip) lines.push(twoCol('SIP', data.doctorSip));
+  lines.push(line);
+
+  for (const item of data.items) {
+    // Wrap long medicine names instead of squeezing the thermal printer columns.
+    const name = item.name || '-';
+    for (let i = 0; i < name.length; i += 42) lines.push(name.slice(i, i + 42));
+    lines.push(twoCol(`${item.qty} x ${formatCurrency(item.price)}`, formatCurrency(item.total)));
+    if (item.usage) {
+      const usage = `Aturan: ${item.usage}`;
+      for (let i = 0; i < usage.length; i += 42) lines.push(usage.slice(i, i + 42));
+    }
+  }
+
+  lines.push(line);
+  lines.push(twoCol('Subtotal', formatCurrency(data.subtotal)));
+  if (data.discount > 0) lines.push(twoCol('Diskon', `-${formatCurrency(data.discount)}`));
+  if (data.taxAmount > 0) lines.push(twoCol(`PPN ${data.taxPercent}%`, formatCurrency(data.taxAmount)));
+  if (data.roundingAmount !== 0) {
+    lines.push(twoCol(data.roundingDescription || 'Penyesuaian', `${data.roundingAmount > 0 ? '+' : '-'}${formatCurrency(Math.abs(data.roundingAmount))}`));
+  }
+  lines.push(twoCol('TOTAL', formatCurrency(data.total)));
+  lines.push(twoCol(`Bayar ${PAYMENT_LABELS[data.paymentMethod] ?? data.paymentMethod}`, formatCurrency(data.paidAmount)));
+  if (data.changeAmount > 0) lines.push(twoCol('Kembali', formatCurrency(data.changeAmount)));
+  lines.push(line);
+  lines.push(center('Terima kasih', 42));
+  lines.push(center('Semoga lekas sembuh', 42));
+  if (p.pharmacistName) {
+    lines.push(line);
+    lines.push(center('Diserahkan oleh:', 42));
+    lines.push(center(p.pharmacistName, 42));
+  }
+
+  const text = lines.join('\n');
+  const html = `<!doctype html>
+<html><head><meta charset="utf-8"><title>Struk ${escapeHtml(data.invoiceNumber)}</title>
+<style>
+  @page { size: ${RECEIPT_WIDTH}mm auto; margin: 0; }
+  html, body { margin: 0; padding: 0; width: ${RECEIPT_WIDTH}mm; background: #fff; color: #000; }
+  body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .receipt {
+    width: ${safeWidth}mm;
+    margin: 0 auto;
+    padding: 2mm 0 4mm;
+    box-sizing: border-box;
+    font-family: "Courier New", "Lucida Console", monospace;
+    letter-spacing: 0;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.48;
+    white-space: pre;
+    color: #000;
+    text-rendering: geometricPrecision;
+  }
+  @media print {
+    html, body { width: ${RECEIPT_WIDTH}mm; margin: 0 !important; padding: 0 !important; }
+    .receipt { width: ${safeWidth}mm; margin: 0 auto; }
+  }
+</style></head><body><pre class="receipt">${escapeHtml(text)}</pre></body></html>`;
+
+  printHtml(html, 0, onPrinted);
+}
+
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function getDatabaseErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'object' && error !== null) {
+    const databaseError = error as { message?: string; details?: string; hint?: string; code?: string };
+    return [databaseError.message, databaseError.details, databaseError.hint, databaseError.code ? `Kode ${databaseError.code}` : '']
+      .filter(Boolean)
+      .join(' | ') || JSON.stringify(error);
+  }
+  return String(error);
+}
+
+function isMissingSchemaField(error: unknown, field: string): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const databaseError = error as { code?: string; message?: string };
+  const message = databaseError.message?.toLowerCase() ?? '';
+  return databaseError.code === '42703' ||
+    (databaseError.code === 'PGRST204' && message.includes(field.toLowerCase())) ||
+    message.includes(field.toLowerCase());
+}
+
+function isMissingStockQuantityColumn(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const databaseError = error as { code?: string; message?: string };
+  return databaseError.code === '42703' ||
+    databaseError.code === 'PGRST204' ||
+    Boolean(databaseError.message?.toLowerCase().includes('stock_quantity'));
+}
+
+function isMissingSaleItemColumn(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && (error as { code?: string }).code === 'PGRST204';
+}
+
+export default function KasirPOS() {
+  const { profile } = useAuth();
+  const [medicines, setMedicines] = useState<Medicine[]>([]);
+  const [medicineUnits, setMedicineUnits] = useState<MedicineUnit[]>([]);
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [parkedSales, setParkedSales] = useState<ParkedSale[]>(() => {
+    try { return JSON.parse(localStorage.getItem('apotek-parked-sales') || '[]') as ParkedSale[]; } catch { return []; }
+  });
+  const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [saleType, setSaleType] = useState<'regular' | 'prescription' | 'doctor'>('regular');
+  const [showScanner, setShowScanner] = useState(false);
+  const [showMobileCart, setShowMobileCart] = useState(false);
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [selectedDoctor, setSelectedDoctor] = useState<Doctor | null>(null);
+  const [patientName, setPatientName] = useState('');
+  const [doctorName, setDoctorName] = useState('');
+  const [doctorSip, setDoctorSip] = useState('');
+  const [paymentParts, setPaymentParts] = useState<PaymentPart[]>([{ method: 'cash', amount: '', bank: '' }]);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showQuickPatient, setShowQuickPatient] = useState(false);
+  const [quickPatientName, setQuickPatientName] = useState('');
+  const [quickPatientPhone, setQuickPatientPhone] = useState('');
+  const [quickPatientGender, setQuickPatientGender] = useState<'L' | 'P'>('L');
+  const [globalDiscount, setGlobalDiscount] = useState(0);
+  const [discountPercent, setDiscountPercent] = useState(0);
+  const [discountMode, setDiscountMode] = useState<'nominal' | 'percent'>('nominal');
+  const [manualRounding, setManualRounding] = useState('0');
+  const [roundingDescription, setRoundingDescription] = useState('');
+  const [taxEnabled, setTaxEnabled] = useState(false);
+  const [taxPercent, setTaxPercent] = useState(11);
+  const [loading, setLoading] = useState(false);
+  const [currentShift, setCurrentShift] = useState<Shift | null>(null);
+  const [shiftLoading, setShiftLoading] = useState(true);
+  const [showOpenShiftModal, setShowOpenShiftModal] = useState(false);
+  const [showCloseShiftModal, setShowCloseShiftModal] = useState(false);
+  const [openingShiftType, setOpeningShiftType] = useState<'morning' | 'evening'>(new Date().getHours() < 15 ? 'morning' : 'evening');
+  const [openingCash, setOpeningCash] = useState('');
+  const [actualClosingCash, setActualClosingCash] = useState('');
+  const [shiftSummary, setShiftSummary] = useState({ sales: 0, cashSales: 0, nonCashSales: 0, change: 0, expectedCash: 0, transactions: 0 });
+  const [shiftSaving, setShiftSaving] = useState(false);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [completedReceipt, setCompletedReceipt] = useState<ReceiptData | null>(null);
+  const [isPrinting, setIsPrinting] = useState(false);
+  const [patientSearch, setPatientSearch] = useState('');
+  const [doctorSearch, setDoctorSearch] = useState('');
+  const [prescriptionError, setPrescriptionError] = useState('');
+  const [pharmacy, setPharmacy] = useState<ReceiptData['pharmacy']>({
+    name: 'Apotek', address: '', phone: '', email: '', pharmacistName: '', sipaNumber: '', siaNumber: '',
+  });
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    loadData();
+    loadPharmacy();
+    void loadCurrentShift();
+    searchRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (!showMobileCart) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, [showMobileCart]);
+
+  async function loadCurrentShift() {
+    setShiftLoading(true);
+    try {
+      const { data, error } = await tenantFrom('cash_register_shifts')
+        .select('*')
+        .eq('status', 'open')
+        .order('opened_at', { ascending: false })
+        .limit(1);
+      if (error) throw error;
+      const shift = (data?.[0] ?? null) as Shift | null;
+      setCurrentShift(shift);
+      setShowOpenShiftModal(!shift);
+      if (shift) await loadShiftSummary(shift);
+    } catch (error) {
+      console.error('Gagal memuat shift kasir:', error);
+      alert(`Gagal memuat shift kasir: ${getDatabaseErrorMessage(error)}`);
+      setShowOpenShiftModal(true);
+    } finally {
+      setShiftLoading(false);
+    }
+  }
+
+  async function loadShiftSummary(shift: Shift) {
+    const { data, error } = await tenantFrom('sales')
+      .select('total, paid_amount, change_amount, payment_method, payment_details')
+      .eq('shift_id', shift.id);
+    if (error) {
+      if ((error as { code?: string }).code === 'PGRST204') return;
+      throw error;
+    }
+    let sales = 0; let cashSales = 0; let nonCashSales = 0; let changeTotal = 0;
+    for (const sale of data ?? []) {
+      const total = Number(sale.total ?? 0);
+      sales += total;
+      const details = Array.isArray(sale.payment_details) ? sale.payment_details as PaymentPart[] : null;
+      if (details) {
+        for (const part of details) {
+          const amount = Number(part.amount) || 0;
+          if (part.method === 'cash') cashSales += amount; else nonCashSales += amount;
+        }
+      } else if (sale.payment_method === 'cash') {
+        cashSales += Math.max(0, Number(sale.paid_amount ?? 0));
+      } else {
+        nonCashSales += Number(sale.paid_amount ?? total);
+      }
+      changeTotal += Number(sale.change_amount ?? 0);
+    }
+    setShiftSummary({ sales, cashSales, nonCashSales, change: changeTotal, expectedCash: Number(shift.opening_cash ?? 0) + cashSales - changeTotal, transactions: (data ?? []).length });
+  }
+
+  async function openShift() {
+    const cash = Math.max(0, Number(openingCash) || 0);
+    if (!profile?.tenant_id) { alert('Tenant kasir tidak ditemukan. Silakan login ulang.'); return; }
+    setShiftSaving(true);
+    try {
+      const { data: existing } = await tenantFrom('cash_register_shifts').select('*').eq('status', 'open').limit(1);
+      if (existing?.[0]) {
+        setCurrentShift(existing[0] as Shift);
+        setShowOpenShiftModal(false);
+        return;
+      }
+      const { data, error } = await tenantFrom('cash_register_shifts')
+        .insert({ shift_type: openingShiftType, opened_by: profile.id, opening_cash: cash, status: 'open' })
+        .select()
+        .single();
+      if (error) throw error;
+      setCurrentShift(data as Shift);
+      setOpeningCash('');
+      setShowOpenShiftModal(false);
+      await loadShiftSummary(data as Shift);
+    } catch (error) {
+      alert(`Gagal membuka shift: ${getDatabaseErrorMessage(error)}`);
+    } finally {
+      setShiftSaving(false);
+    }
+  }
+
+  async function prepareCloseShift() {
+    if (!currentShift) return;
+    setShiftSaving(true);
+    try {
+      await loadShiftSummary(currentShift);
+      setActualClosingCash('');
+      setShowCloseShiftModal(true);
+    } catch (error) {
+      alert(`Gagal menghitung laporan shift: ${getDatabaseErrorMessage(error)}`);
+    } finally {
+      setShiftSaving(false);
+    }
+  }
+
+  async function closeShift() {
+    if (!currentShift || !profile?.id) return;
+    const actual = Math.max(0, Number(actualClosingCash) || 0);
+    const expected = shiftSummary.expectedCash;
+    const difference = actual - expected;
+    if (actualClosingCash.trim() === '') { alert('Uang kas fisik wajib diisi.'); return; }
+    setShiftSaving(true);
+    try {
+      const { error } = await tenantFrom('cash_register_shifts').update({
+        closed_by: profile.id, closed_at: new Date().toISOString(), expected_cash: expected, actual_cash: actual, cash_difference: difference, status: 'closed'
+      }).eq('id', currentShift.id);
+      if (error) throw error;
+      setCurrentShift(null);
+      setShowCloseShiftModal(false);
+      setShowOpenShiftModal(true);
+      setOpeningShiftType(new Date().getHours() < 15 ? 'morning' : 'evening');
+      setActualClosingCash('');
+      alert(`Shift ${currentShift.shift_type === 'morning' ? 'Pagi' : 'Malam'} berhasil ditutup.
+
+Penjualan: ${formatCurrency(shiftSummary.sales)}
+Kas yang seharusnya: ${formatCurrency(expected)}
+Kas fisik: ${formatCurrency(actual)}
+Selisih: ${formatCurrency(difference)}`);
+    } catch (error) {
+      alert(`Gagal menutup shift: ${getDatabaseErrorMessage(error)}`);
+    } finally {
+      setShiftSaving(false);
+    }
+  }
+
+  async function loadPharmacy() {
+    const { data } = await tenantFrom('settings').select('key, value');
+    if (!data) return;
+    const map: Record<string, string> = {};
+    for (const row of data) map[row.key] = row.value;
+    setPharmacy({
+      name: map.pharmacy_name || 'Apotek',
+      address: map.pharmacy_address || '',
+      phone: map.pharmacy_phone || '',
+      email: map.pharmacy_email || '',
+      pharmacistName: map.pharmacist_name || '',
+      sipaNumber: map.sipa_number || '',
+      siaNumber: map.sia_number || '',
+    });
+  }
+
+async function loadData() {
+  try {
+    const allMedicines: Medicine[] = [];
+    const pageSize = 1000;
+    let from = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+      const { data, error } = await tenantFrom('medicines')
+        .select('*')
+        .eq('is_active', true)
+        .order('name')
+        .range(from, from + pageSize - 1);
+
+      if (error) {
+        console.error('Gagal memuat obat:', error);
+        break;
+      }
+
+      const medicinesPage = (data ?? []) as Medicine[];
+
+      allMedicines.push(...medicinesPage);
+
+      if (medicinesPage.length < pageSize) {
+        hasMore = false;
+      } else {
+        from += pageSize;
+      }
+    }
+
+    const [patientsRes, doctorsRes, unitsRes] = await Promise.all([
+      tenantFrom('patients')
+        .select('*')
+        .order('name'),
+
+      tenantFrom('doctors')
+        .select('*')
+        .eq('is_active', true)
+        .order('name'),
+
+      tenantFrom('medicine_units')
+        .select('*')
+        .order('unit_name'),
+    ]);
+
+    setMedicines(allMedicines);
+    setPatients(patientsRes.data ?? []);
+    setDoctors(doctorsRes.data ?? []);
+    setMedicineUnits(
+      (unitsRes.data ?? []) as MedicineUnit[]
+    );
+
+  } catch (error) {
+    console.error('Gagal memuat data Kasir:', error);
+  }
+}
+
+  const filteredMeds = useMemo(() => medicines.filter(m => {
+    const matchSearch = m.name.toLowerCase().includes(search.toLowerCase()) ||
+      (m.generic_name ?? '').toLowerCase().includes(search.toLowerCase()) ||
+      (m.barcode ?? '').includes(search);
+    const matchCat = categoryFilter === 'all' || m.category === categoryFilter;
+    return matchSearch && matchCat;
+  }), [medicines, search, categoryFilter]);
+
+  function changeSaleType(nextType: 'regular' | 'prescription' | 'doctor') {
+    setSaleType(nextType);
+    setPrescriptionError('');
+    // Per-item discounts are exclusive to general sales.
+    setCart(prev => prev.map(item => ({ ...item, discount: 0 })));
+  }
+
+  function getPrice(med: Medicine): number {
+    const doctorPricingActive = saleType === 'doctor';
+    if (doctorPricingActive) {
+      const p = med.price_doctor || med.price_regular || med.sell_price;
+      return p > 0 ? p : med.sell_price;
+    }
+    if (saleType === 'prescription') {
+      const p = med.price_prescription || med.sell_price;
+      return p > 0 ? p : med.sell_price;
+    }
+    const p = med.price_regular || med.sell_price;
+    return p > 0 ? p : med.sell_price;
+  }
+
+  function addToCart(med: Medicine) {
+    if (med.stock <= 0) return;
+    setCart(prev => {
+      const exists = prev.find(i => i.medicine.id === med.id);
+      if (exists) {
+        return prev.map(i => i.medicine.id === med.id && i.quantity < i.medicine.stock
+          ? { ...i, quantity: i.quantity + 1 }
+          : i
+        );
+      }
+      return [...prev, { medicine: med, quantity: 1, discount: 0, usage: '', maxQuantity: null, unit: null }];
+    });
+  }
+
+  const handleBarcodeScan = useCallback((code: string) => {
+    const found = medicines.find(m => m.barcode === code && m.is_active);
+    if (found) {
+      setShowScanner(false);
+      addToCart(found);
+    } else {
+      alert(`Barcode "${code}" tidak ditemukan.`);
+    }
+  }, [medicines]);
+
+  function updateQty(id: string, delta: number) {
+    setCart(prev => prev.map(i => {
+      if (i.medicine.id !== id) return i;
+      const newQty = i.quantity + delta;
+      if (newQty < 1) return i;
+      if (newQty > i.medicine.stock || (i.maxQuantity !== null && newQty > i.maxQuantity)) return i;
+      return { ...i, quantity: newQty };
+    }));
+  }
+
+  function setQty(id: string, qty: number) {
+    setCart(prev => prev.map(i => {
+      if (i.medicine.id !== id) return i;
+      if (isNaN(qty) || qty < 1) return { ...i, quantity: 1 };
+      if (qty > i.medicine.stock || (i.maxQuantity !== null && qty > i.maxQuantity)) return { ...i, quantity: Math.min(i.medicine.stock, i.maxQuantity ?? i.medicine.stock) };
+      return { ...i, quantity: qty };
+    }));
+  }
+
+  function removeItem(id: string) {
+    setCart(prev => prev.filter(i => i.medicine.id !== id));
+  }
+
+  function updateItemDetail(id: string, field: 'usage' | 'maxQuantity', value: string) {
+    setCart(prev => prev.map(item => item.medicine.id === id
+      ? { ...item, [field]: field === 'maxQuantity' ? (value ? Math.max(1, Number(value)) : null) : value }
+      : item));
+  }
+
+  function updateItemDiscount(id: string, value: string) {
+    setCart(prev => prev.map(item => {
+      if (item.medicine.id !== id) return item;
+      const lineTotal = Math.max(0, getItemPrice(item) * item.quantity);
+      const discount = value === '' ? 0 : Math.max(0, Math.min(lineTotal, Number(value) || 0));
+      return { ...item, discount };
+    }));
+  }
+
+  function updateItemUnit(id: string, unitId: string) {
+    const unit = medicineUnits.find(item => item.id === unitId) ?? null;
+    setCart(prev => prev.map(item => item.medicine.id === id ? { ...item, unit } : item));
+  }
+
+  function getUnitOptions(medicineId: string) {
+    return medicineUnits.filter(unit => unit.medicine_id === medicineId);
+  }
+
+  function getItemPrice(item: CartItem) {
+    if (!item.unit) return getPrice(item.medicine);
+    if (saleType === 'doctor') {
+      const masterDoctorPrice = item.medicine.price_doctor || item.medicine.price_regular || item.medicine.sell_price;
+      return item.unit.price_doctor > 0 ? item.unit.price_doctor : masterDoctorPrice * item.unit.conversion_factor;
+    }
+    if (saleType === 'prescription') return item.unit.price_prescription;
+    return item.unit.price_regular;
+  }
+
+  function getBaseQuantity(item: CartItem) {
+    return item.quantity * (item.unit?.conversion_factor ?? 1);
+  }
+
+  const subtotal = cart.reduce((s, i) => s + getItemPrice(i) * i.quantity - i.discount, 0);
+  const effectiveDiscount = discountMode === 'percent'
+    ? Math.round(subtotal * (discountPercent / 100))
+    : globalDiscount;
+  const total = Math.max(0, subtotal - effectiveDiscount);
+  const taxBase = Math.max(0, subtotal - effectiveDiscount);
+  const taxAmount = taxEnabled ? Math.round(taxBase * taxPercent / 100) : 0;
+  const totalBeforeRounding = total + taxAmount;
+  const roundingAmount = manualRounding.trim() === '' ? 0 : (Number(manualRounding) || 0);
+  const grandTotal = Math.max(0, totalBeforeRounding + roundingAmount);
+  const paidAmount = paymentParts.reduce((sum, part) => sum + (Number(part.amount) || 0), 0);
+  const cashPaid = paymentParts.filter(part => part.method === 'cash').reduce((sum, part) => sum + (Number(part.amount) || 0), 0);
+  const change = Math.max(0, cashPaid - grandTotal);
+  const paymentMethod = paymentParts[0]?.method || 'cash';
+  const databasePaymentMethod = paymentMethod === 'qris' ? 'transfer' : paymentMethod === 'card' ? 'debit' : paymentMethod;
+
+  function updatePayment(index: number, changes: Partial<PaymentPart>) {
+    setPaymentParts(prev => prev.map((part, partIndex) => partIndex === index ? { ...part, ...changes } : part));
+  }
+
+  function addPaymentPart() {
+    setPaymentParts(prev => [...prev, { method: 'qris', amount: '', bank: '' }]);
+  }
+
+  function removePaymentPart(index: number) {
+    setPaymentParts(prev => prev.length === 1 ? prev : prev.filter((_, partIndex) => partIndex !== index));
+  }
+
+  function parkSale() {
+    if (cart.length === 0) return;
+    const id = `P-${Date.now()}`;
+    const parked: ParkedSale = {
+      id, label: `${id} · ${patientName || selectedPatient?.name || 'Umum'}`, createdAt: new Date().toISOString(),
+      cart, saleType, patient: selectedPatient, patientName, doctor: selectedDoctor, doctorName, doctorSip,
+      discount: globalDiscount,
+      manualRounding,
+      roundingDescription,
+    };
+    const next = [...parkedSales, parked];
+    setParkedSales(next);
+    localStorage.setItem('apotek-parked-sales', JSON.stringify(next));
+    resetCart();
+  }
+
+  function resumeSale(id: string) {
+    const parked = parkedSales.find(item => item.id === id);
+    if (!parked) return;
+    setCart(parked.cart);
+    setSaleType(parked.saleType);
+    setSelectedPatient(parked.patient);
+    setPatientName(parked.patientName);
+    setPatientSearch(parked.patient ? '' : parked.patientName);
+    setSelectedDoctor(parked.doctor);
+    setDoctorName(parked.doctorName);
+    setDoctorSip(parked.doctorSip);
+    setGlobalDiscount(parked.discount);
+    setManualRounding(parked.manualRounding ?? '0');
+    setRoundingDescription(parked.roundingDescription ?? '');
+    const next = parkedSales.filter(item => item.id !== id);
+    setParkedSales(next);
+    localStorage.setItem('apotek-parked-sales', JSON.stringify(next));
+  }
+
+  async function quickAddPatient() {
+    if (!quickPatientName.trim()) return;
+    const { data, error } = await tenantFrom('patients').insert({ name: quickPatientName.trim(), phone: quickPatientPhone || null, gender: quickPatientGender }).select().single();
+    if (error || !data) { alert('Pasien baru gagal disimpan.'); return; }
+    const patient = data as Patient;
+    setPatients(prev => [...prev, patient].sort((a, b) => a.name.localeCompare(b.name)));
+    setSelectedPatient(patient);
+    setPatientName(patient.name);
+    setPatientSearch('');
+    setShowQuickPatient(false);
+    setQuickPatientName('');
+    setQuickPatientPhone('');
+  }
+
+  async function handleCheckout() {
+    if (!currentShift) { alert('Belum ada shift yang dibuka. Silakan buka shift terlebih dahulu.'); setShowOpenShiftModal(true); return; }
+    if (cart.length === 0) return;
+    if (saleType === 'prescription' && (!selectedPatient && !patientName.trim() || !doctorName.trim())) {
+      setPrescriptionError('Penjualan resep wajib mengisi Nama Dokter dan Nama Pasien.');
+      return;
+    }
+    if (saleType === 'doctor' && (!doctorName.trim() || !doctorSip.trim())) {
+      setPrescriptionError('Penjualan dokter wajib mengisi Nama Dokter dan No. SIP Dokter.');
+      return;
+    }
+    if (paidAmount < grandTotal || (paymentParts.some(part => part.method === 'cash') && cashPaid < grandTotal && paymentParts.length === 1)) {
+      alert('Uang yang dibayar kurang!');
+      return;
+    }
+    setLoading(true);
+    let createdSaleId: string | null = null;
+    const allocations: { item: CartItem; batchId: string | null; quantity: number; buyPrice: number }[] = [];
+    const updatedAllocations: typeof allocations = [];
+    const updatedMedicines: CartItem[] = [];
+    try {
+      for (const item of cart) {
+        let remaining = getBaseQuantity(item);
+        let batchRows: unknown[] | null = null;
+        let usesStockQuantity = true;
+        const batchQuery = await tenantFrom('medicine_batches')
+          .select('id, quantity, stock_quantity, buy_price, expiry_date')
+          .eq('medicine_id', item.medicine.id)
+          .order('expiry_date', { ascending: true });
+        if (batchQuery.error && isMissingStockQuantityColumn(batchQuery.error)) {
+          usesStockQuantity = false;
+          const legacyQuery = await tenantFrom('medicine_batches')
+            .select('id, quantity, buy_price, expiry_date')
+            .eq('medicine_id', item.medicine.id)
+            .order('expiry_date', { ascending: true });
+          if (legacyQuery.error) throw new Error(`Gagal membaca batch ${item.medicine.name}: ${getDatabaseErrorMessage(legacyQuery.error)}`);
+          batchRows = legacyQuery.data ?? [];
+        } else {
+          if (batchQuery.error) throw new Error(`Gagal membaca batch ${item.medicine.name}: ${getDatabaseErrorMessage(batchQuery.error)}`);
+          batchRows = batchQuery.data ?? [];
+        }
+        for (const batch of (batchRows ?? []) as Pick<MedicineBatch, 'id' | 'quantity' | 'stock_quantity' | 'buy_price'>[]) {
+          if (remaining <= 0) break;
+          const available = usesStockQuantity && batch.stock_quantity > 0 ? batch.stock_quantity : batch.quantity;
+          if (available <= 0) continue;
+          const allocated = Math.min(remaining, available);
+          allocations.push({ item, batchId: batch.id, quantity: allocated, buyPrice: batch.buy_price ?? item.medicine.buy_price ?? 0 });
+          remaining -= allocated;
+        }
+        // Legacy medicines may have aggregate stock but no initialized batches.
+        if (remaining > 0 && item.medicine.stock >= remaining) {
+          allocations.push({ item, batchId: null, quantity: remaining, buyPrice: item.medicine.buy_price ?? 0 });
+          remaining = 0;
+        }
+        if (remaining > 0) throw new Error(`Stok batch ${item.medicine.name} tidak mencukupi.`);
+      }
+      const invoiceNumber = generateInvoiceNumber();
+      const salePayload = {
+        invoice_number: invoiceNumber,
+        patient_id: selectedPatient?.id ?? null,
+        doctor_id: selectedDoctor?.id ?? null,
+        patient_name: selectedPatient?.name ?? (patientName || 'Umum'),
+        payment_method: databasePaymentMethod,
+        sale_type: saleType,
+        subtotal,
+        discount: effectiveDiscount,
+        rounding_amount: roundingAmount,
+        rounding_note: roundingDescription.trim() || null,
+        total: grandTotal,
+        tax_percent: taxEnabled ? taxPercent : 0,
+        tax_amount: taxAmount,
+        paid_amount: paidAmount,
+        change_amount: change,
+        cashier_name: profile?.full_name ?? 'Kasir',
+        shift_id: currentShift.id,
+        payment_details: paymentParts.map(part => ({ method: part.method, amount: Number(part.amount) || 0, bank: part.bank || '' })),
+      };
+      let saleResult = await tenantFrom('sales').insert(salePayload).select().single();
+      if (saleResult.error && isMissingSchemaField(saleResult.error, 'rounding_note')) {
+        const { rounding_note: _roundingNote, ...payloadWithoutNote } = salePayload;
+        saleResult = await tenantFrom('sales').insert(payloadWithoutNote).select().single();
+      }
+      if (saleResult.error && isMissingSchemaField(saleResult.error, 'rounding_amount')) {
+        const { rounding_amount: _roundingAmount, rounding_note: _roundingNote, ...legacySalePayload } = salePayload;
+        saleResult = await tenantFrom('sales').insert(legacySalePayload).select().single();
+      }
+      const { data: sale, error: saleError } = saleResult;
+      if (saleError) throw new Error(`Gagal membuat invoice: ${getDatabaseErrorMessage(saleError)}`);
+      createdSaleId = sale.id;
+
+      const saleItems = allocations.map(allocation => ({
+        sale_id: sale.id,
+        medicine_id: allocation.item.medicine.id,
+        medicine_name: allocation.item.medicine.name,
+        quantity: allocation.quantity,
+        unit_price: getItemPrice(allocation.item) / (allocation.item.unit?.conversion_factor ?? 1),
+        cost_price: allocation.buyPrice,
+        discount: allocation.item.discount * (allocation.quantity / Math.max(1, getBaseQuantity(allocation.item))),
+        total_price: Math.max(0, (getItemPrice(allocation.item) / (allocation.item.unit?.conversion_factor ?? 1)) * allocation.quantity - (allocation.item.discount * (allocation.quantity / Math.max(1, getBaseQuantity(allocation.item))))),
+        batch_id: allocation.batchId,
+        unit_id: allocation.item.unit?.id ?? null,
+        unit_name: allocation.item.unit?.unit_name ?? allocation.item.medicine.unit,
+        conversion_factor: allocation.item.unit?.conversion_factor ?? 1,
+      }));
+      const itemsInsert = await tenantFrom('sale_items').insert(saleItems);
+      if (itemsInsert.error && isMissingSaleItemColumn(itemsInsert.error)) {
+        const legacySaleItems = saleItems.map(({ batch_id: _batchId, unit_id: _unitId, unit_name: _unitName, conversion_factor: _conversionFactor, ...item }) => item);
+        const legacyInsert = await tenantFrom('sale_items').insert(legacySaleItems);
+        if (legacyInsert.error) throw new Error(`Gagal menyimpan item transaksi: ${getDatabaseErrorMessage(legacyInsert.error)}`);
+      } else if (itemsInsert.error) {
+        throw new Error(`Gagal menyimpan item transaksi: ${getDatabaseErrorMessage(itemsInsert.error)}`);
+      }
+
+      for (const item of cart) {
+        const baseQuantity = getBaseQuantity(item);
+        const batchStockQuery = await tenantFrom('medicine_batches').select('id, quantity, stock_quantity').eq('medicine_id', item.medicine.id);
+        const currentBatches = batchStockQuery.error && isMissingStockQuantityColumn(batchStockQuery.error)
+          ? (await tenantFrom('medicine_batches').select('id, quantity').eq('medicine_id', item.medicine.id)).data
+          : batchStockQuery.data;
+        const currentBatchesError = batchStockQuery.error && !isMissingStockQuantityColumn(batchStockQuery.error) ? batchStockQuery.error : null;
+        if (currentBatchesError) throw new Error(`Gagal membaca stok batch: ${getDatabaseErrorMessage(currentBatchesError)}`);
+        let remaining = baseQuantity;
+        for (const batch of (currentBatches ?? []) as Pick<MedicineBatch, 'id' | 'quantity' | 'stock_quantity'>[]) {
+          if (remaining <= 0) break;
+          const available = batch.stock_quantity ?? batch.quantity;
+          const used = allocations.filter(a => a.item.medicine.id === item.medicine.id && a.batchId === batch.id).reduce((sum, a) => sum + a.quantity, 0);
+          if (used <= 0) continue;
+          const nextStock = Math.max(0, available - used);
+          const batchUpdate = await tenantFrom('medicine_batches').update({ stock_quantity: nextStock, quantity: nextStock, updated_at: new Date().toISOString() }).eq('id', batch.id);
+          const batchUpdateError = isMissingStockQuantityColumn(batchUpdate.error)
+            ? (await tenantFrom('medicine_batches').update({ quantity: nextStock, updated_at: new Date().toISOString() }).eq('id', batch.id)).error
+            : batchUpdate.error;
+          if (batchUpdateError) throw new Error(`Gagal mengurangi batch ${batch.id}: ${getDatabaseErrorMessage(batchUpdateError)}`);
+          updatedAllocations.push(...allocations.filter(allocation => allocation.item.medicine.id === item.medicine.id && allocation.batchId === batch.id));
+          remaining -= used;
+        }
+        const { error: medicineUpdateError } = await tenantFrom('medicines').update({
+          stock: Math.max(0, item.medicine.stock - baseQuantity),
+          updated_at: new Date().toISOString(),
+        }).eq('id', item.medicine.id);
+        if (medicineUpdateError) throw new Error(`Gagal memperbarui stok ${item.medicine.name}: ${getDatabaseErrorMessage(medicineUpdateError)}`);
+        updatedMedicines.push(item);
+      }
+
+      const receiptData: ReceiptData = {
+        invoiceNumber,
+        patientName: selectedPatient?.name ?? (patientName || 'Umum'),
+        doctorName,
+        cashierName: profile?.full_name ?? 'Kasir',
+        paymentMethod,
+        subtotal,
+        discount: effectiveDiscount,
+        roundingAmount,
+        roundingDescription: roundingDescription.trim(),
+        total: grandTotal,
+        taxPercent: taxEnabled ? taxPercent : 0,
+        taxAmount,
+        paidAmount,
+        changeAmount: paymentMethod === 'cash' ? change : 0,
+        doctorSip: saleType === 'doctor' ? doctorSip : '',
+        items: cart.map(i => ({ name: i.medicine.name, qty: i.quantity, price: getItemPrice(i), total: getItemPrice(i) * i.quantity - i.discount, usage: i.usage })),
+        pharmacy,
+      };
+      setSuccess(invoiceNumber);
+      setCompletedReceipt(receiptData);
+      resetCart();
+      loadData();
+    } catch (err) {
+      console.error('Checkout transaction failed', err);
+      if (createdSaleId) {
+        for (const item of updatedMedicines) {
+          await tenantFrom('medicines').update({ stock: item.medicine.stock, updated_at: new Date().toISOString() }).eq('id', item.medicine.id);
+        }
+        for (const allocation of updatedAllocations) {
+          const { data: batch } = await tenantFrom('medicine_batches').select('stock_quantity, quantity').eq('id', allocation.batchId).single();
+          if (batch) await tenantFrom('medicine_batches').update({ stock_quantity: (batch.stock_quantity ?? batch.quantity) + allocation.quantity, quantity: (batch.stock_quantity ?? batch.quantity) + allocation.quantity }).eq('id', allocation.batchId);
+        }
+        await tenantFrom('sale_items').delete().eq('sale_id', createdSaleId);
+        await tenantFrom('sales').delete().eq('id', createdSaleId);
+      }
+      const message = getDatabaseErrorMessage(err);
+      alert(`Transaksi gagal: ${message}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function closeCompletedReceipt() {
+    setCompletedReceipt(null);
+    setSuccess(null);
+    setIsPrinting(false);
+  }
+
+  function printCompletedReceipt() {
+    if (!completedReceipt || isPrinting) return;
+    setIsPrinting(true);
+    printReceipt(completedReceipt, () => setIsPrinting(false));
+  }
+
+  function resetCart() {
+    setCart([]);
+    setSelectedPatient(null);
+    setSelectedDoctor(null);
+    setPatientName('');
+    setPaymentParts([{ method: 'cash', amount: '', bank: '' }]);
+    setGlobalDiscount(0);
+    setDiscountPercent(0);
+    setDiscountMode('nominal');
+    setManualRounding('0');
+    setRoundingDescription('');
+    setTaxEnabled(false);
+    setTaxPercent(11);
+    setPatientSearch('');
+    setDoctorSearch('');
+    setDoctorName('');
+    setDoctorSip('');
+    setSearch('');
+    setPrescriptionError('');
+  }
+
+  const filteredPatients = patients.filter(p => p.name.toLowerCase().includes(patientSearch.toLowerCase()));
+  const filteredDoctors = doctors.filter(d => d.name.toLowerCase().includes(doctorSearch.toLowerCase()));
+
+  return (
+    <div className="flex h-full min-h-0 flex-col lg:flex-row">
+      {/* Left: Product Search */}
+      <div className={`kasir-product-panel flex-1 min-h-0 flex flex-col bg-gray-50 overflow-hidden ${showMobileCart ? 'mobile-cart-open' : ''}`}>
+        <div className="kasir-toolbar p-4 bg-white border-b border-gray-100">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div>
+              <h2 className="font-bold text-gray-800 text-lg">Kasir POS</h2>
+              {currentShift && <p className="text-xs text-gray-500 mt-0.5">Shift {currentShift.shift_type === 'morning' ? 'Pagi' : 'Malam'} · Buka {new Date(currentShift.opened_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</p>}
+            </div>
+            {currentShift && <button type="button" onClick={() => void prepareCloseShift()} className="flex items-center gap-1.5 px-3 py-2 border border-red-200 text-red-600 hover:bg-red-50 rounded-lg text-xs font-semibold"><LockKeyhole size={14} /> Tutup Shift</button>}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative flex-1 min-w-[180px]">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                ref={searchRef}
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Cari nama obat, generik, atau scan barcode..."
+                className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-gray-50"
+              />
+            </div>
+            <div className="relative">
+              <select
+                value={categoryFilter}
+                onChange={e => setCategoryFilter(e.target.value)}
+                className="appearance-none pl-3 pr-9 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white font-medium text-gray-700"
+              >
+                <option value="all">Semua Kategori</option>
+                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            </div>
+            <button
+              onClick={() => setShowScanner(true)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-teal-500 hover:bg-teal-600 text-white rounded-xl text-sm font-semibold transition-colors"
+            >
+              <ScanLine size={16} /> Scan
+            </button>
+          </div>
+          {/* Sale Type Toggle */}
+          <div className="flex items-center gap-2 mt-3 overflow-x-auto pb-1">
+            <span className="text-xs text-gray-500 font-medium">Jenis Penjualan:</span>
+            <div className="flex bg-gray-100 rounded-lg p-0.5 min-w-max">
+              {([['regular', 'Penjualan Umum'], ['prescription', 'Penjualan Resep'], ['doctor', 'Penjualan Dokter']] as const).map(([type, label]) => (
+                <button
+                  key={type}
+                  onClick={() => changeSaleType(type)}
+                  className={`px-3 py-1.5 rounded-md text-sm font-semibold transition-colors ${saleType === type ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500'}`}
+                >{label}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 content-start">
+          {filteredMeds.map(med => (
+            <button
+              key={med.id}
+              onClick={() => addToCart(med)}
+              disabled={med.stock <= 0 || !currentShift}
+              className={`text-left bg-white border rounded-xl p-3 transition-all hover:shadow-md hover:border-teal-300 active:scale-95 ${
+                med.stock <= 0 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+              }`}
+            >
+              <div className="flex items-start justify-between gap-1">
+                <p className="text-sm font-semibold text-gray-800 leading-tight line-clamp-2">{med.name}</p>
+                {med.requires_prescription && (
+                  <span className="text-[9px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-bold flex-shrink-0">R/</span>
+                )}
+              </div>
+              <p className="text-xs text-gray-400 mt-1">{med.category}</p>
+              <div className="flex items-center justify-between mt-2">
+                <span className="text-sm font-bold text-teal-600">{formatCurrency(getPrice(med))}</span>
+                <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
+                  med.stock <= 0 ? 'bg-red-100 text-red-600' :
+                  med.stock <= med.min_stock ? 'bg-orange-100 text-orange-600' :
+                  'bg-green-100 text-green-600'
+                }`}>{med.stock} {med.unit}{med.pieces_per_strip > 1 && med.unit === 'strip' ? ` (${med.pieces_per_strip} pcs)` : ''}</span>
+              </div>
+            </button>
+          ))}
+          {filteredMeds.length === 0 && (
+            <div className="col-span-3 text-center text-gray-400 py-16">
+              <Search size={32} className="mx-auto mb-2 text-gray-300" />
+              <p>Obat tidak ditemukan</p>
+            </div>
+          )}
+        </div>
+
+      </div>
+
+      {/* Right: Cart */}
+      <div className={`kasir-cart-panel w-full lg:w-[420px] xl:w-[460px] h-auto lg:h-full min-h-0 flex flex-col bg-white border-t lg:border-t-0 lg:border-l border-gray-100 shadow-sm ${showMobileCart ? 'mobile-cart-sheet-open' : ''}`}>
+        <div className="mobile-cart-sheet-header md:hidden">
+          <div className="min-w-0">
+            <p className="font-bold text-gray-800">Keranjang Transaksi</p>
+            <p className="text-[11px] text-gray-400">{cart.length} item · {formatCurrency(grandTotal)}</p>
+          </div>
+          <button type="button" onClick={() => setShowMobileCart(false)} className="mobile-cart-close" aria-label="Tutup keranjang">
+            <X size={20} />
+          </button>
+        </div>
+        {/* Patient & Doctor */}
+        <div className="p-4 border-b border-gray-100 space-y-2">
+          <div className="relative">
+            <label className="text-xs text-gray-500 font-medium">Pasien</label>
+            <input
+              value={selectedPatient ? selectedPatient.name : patientSearch}
+              onChange={e => { setPatientSearch(e.target.value); setPatientName(e.target.value); setSelectedPatient(null); }}
+              placeholder="Cari pasien atau ketik nama..."
+              className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+            />
+            <button type="button" onClick={() => setShowQuickPatient(true)} className="absolute right-2 top-6 text-teal-600 hover:text-teal-700" title="Tambah pasien baru">
+              <UserPlus size={15} />
+            </button>
+            {patientSearch && !selectedPatient && filteredPatients.length > 0 && (
+              <div className="absolute z-20 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto">
+                {filteredPatients.slice(0, 5).map(p => (
+                  <button key={p.id} onClick={() => { setSelectedPatient(p); setPatientName(p.name); setPatientSearch(''); }}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                  >
+                    <span className="font-medium">{p.name}</span>
+                    <span className="text-gray-400 ml-2">{p.phone}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          {saleType !== 'regular' && (
+            <div className="relative">
+              <label className="text-xs text-gray-500 font-medium">Dokter</label>
+              <input
+                value={selectedDoctor ? selectedDoctor.name : doctorName || doctorSearch}
+                onChange={e => { setDoctorSearch(e.target.value); setDoctorName(e.target.value); setSelectedDoctor(null); }}
+                placeholder="Cari dokter..."
+                className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+              />
+              {doctorSearch && !selectedDoctor && filteredDoctors.length > 0 && (
+                <div className="absolute z-20 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto">
+                  {filteredDoctors.slice(0, 5).map(d => (
+                    <button key={d.id} onClick={() => { setSelectedDoctor(d); setDoctorName(d.name); setDoctorSip(d.sip_number ?? ''); setDoctorSearch(''); }}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                    >
+                      <span className="font-medium">{d.name}</span>
+                      <span className="text-gray-400 ml-2">{d.specialization}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {saleType === 'doctor' && (
+                <input
+                  value={doctorSip}
+                  onChange={e => setDoctorSip(e.target.value)}
+                  placeholder="No. SIP Dokter *"
+                  className="w-full mt-2 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
+                />
+              )}
+            </div>
+          )}
+          {saleType !== 'regular' && prescriptionError && <p className="text-xs text-red-500">{prescriptionError}</p>}
+        </div>
+
+        {/* Cart Items */}
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+          {cart.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-gray-300">
+              <ShoppingCartEmpty />
+              <p className="text-sm">Pilih obat untuk ditambahkan</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-50">
+              {cart.map(item => (
+                <div key={item.medicine.id} className="px-4 py-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-800 break-words leading-snug">{item.medicine.name}</p>
+                      <p className="text-xs text-gray-400">{formatCurrency(getItemPrice(item))} / {item.unit?.unit_name ?? item.medicine.unit}{item.unit ? ` (${item.unit.conversion_factor} ${item.medicine.unit})` : ''}</p>
+                    </div>
+                    <button onClick={() => removeItem(item.medicine.id)} className="text-gray-300 hover:text-red-400 flex-shrink-0">
+                      <Trash2 size={14} />
+                    </button>
+                    {saleType !== 'regular' && <button onClick={() => printLabel({ pharmacyName: pharmacy.name, date: new Date().toLocaleDateString('id-ID'), patientName: (selectedPatient?.name ?? patientName) || 'Umum', medicineName: item.medicine.name, quantity: item.quantity, usage: item.usage })} className="text-teal-500 hover:text-teal-700 flex-shrink-0" title="Cetak etiket"><Tag size={14} /></button>}
+                  </div>
+                  <div className="flex items-center justify-between mt-2">
+                    <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
+                      <button onClick={() => updateQty(item.medicine.id, -1)} className="w-6 h-6 flex items-center justify-center text-gray-600 hover:text-gray-900">
+                        <Minus size={12} />
+                      </button>
+                      <input
+                        type="number"
+                        value={item.quantity}
+                        onChange={e => setQty(item.medicine.id, parseInt(e.target.value))}
+                        className="w-10 text-center text-sm font-semibold bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      />
+                      <button onClick={() => updateQty(item.medicine.id, 1)} className="w-6 h-6 flex items-center justify-center text-gray-600 hover:text-gray-900">
+                        <Plus size={12} />
+                      </button>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-sm font-bold text-gray-800">{formatCurrency(Math.max(0, getItemPrice(item) * item.quantity - item.discount))}</span>
+                      {item.discount > 0 && <div className="text-[10px] text-red-500">Diskon -{formatCurrency(item.discount)}</div>}
+                    </div>
+                  </div>
+                  {saleType === 'regular' && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <label className="text-[11px] text-gray-500 whitespace-nowrap">Diskon item</label>
+                      <div className="relative flex-1">
+                        <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">Rp</span>
+                        <input
+                          type="number"
+                          min="0"
+                          max={Math.max(0, getItemPrice(item) * item.quantity)}
+                          value={item.discount || ''}
+                          onChange={e => updateItemDiscount(item.medicine.id, e.target.value)}
+                          placeholder="0"
+                          className="w-full pl-7 pr-2 py-1.5 border border-gray-200 rounded-md text-[11px] focus:outline-none focus:ring-1 focus:ring-teal-400"
+                        />
+                      </div>
+                    </div>
+                  )}
+                  {getUnitOptions(item.medicine.id).length > 0 && (
+                    <select value={item.unit?.id ?? ''} onChange={e => updateItemUnit(item.medicine.id, e.target.value)} className="w-full mt-2 px-2 py-1.5 border border-gray-200 rounded-md text-[11px] focus:outline-none focus:ring-1 focus:ring-teal-400">
+                      <option value="">Satuan dasar: {item.medicine.unit}</option>
+                      {getUnitOptions(item.medicine.id).map(unit => {
+                        const doctorUnitPrice = unit.price_doctor > 0 ? unit.price_doctor : (item.medicine.price_doctor || item.medicine.price_regular || item.medicine.sell_price) * unit.conversion_factor;
+                        const unitPrice = saleType === 'doctor'
+                          ? doctorUnitPrice
+                          : saleType === 'prescription' ? unit.price_prescription : unit.price_regular;
+                        return <option key={unit.id} value={unit.id}>{unit.unit_name} · {formatCurrency(unitPrice)}</option>;
+                      })}
+                    </select>
+                  )}
+                  {saleType !== 'regular' && (
+                    <div className="grid grid-cols-2 gap-2 mt-2">
+                      <input value={item.usage} onChange={e => updateItemDetail(item.medicine.id, 'usage', e.target.value)} placeholder="Aturan pakai" className="px-2 py-1.5 border border-gray-200 rounded-md text-[11px] focus:outline-none focus:ring-1 focus:ring-teal-400" />
+                      <input type="number" min="1" value={item.maxQuantity ?? ''} onChange={e => updateItemDetail(item.medicine.id, 'maxQuantity', e.target.value)} placeholder="Maks. jumlah" className="px-2 py-1.5 border border-gray-200 rounded-md text-[11px] focus:outline-none focus:ring-1 focus:ring-teal-400" />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Payment Summary */}
+        <div className="border-t border-gray-100 p-4 space-y-3">
+          <div className="flex justify-between text-sm text-gray-600">
+            <span>Subtotal</span>
+            <span className="font-medium">{formatCurrency(subtotal)}</span>
+          </div>
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-600">Diskon Global</span>
+              <div className="flex items-center gap-1 text-xs">
+                <button
+                  type="button"
+                  onClick={() => { setDiscountMode('nominal'); setDiscountPercent(0); }}
+                  className={`px-2 py-0.5 rounded-md font-medium transition-colors ${discountMode === 'nominal' ? 'bg-teal-100 text-teal-700' : 'text-gray-400 hover:text-gray-600'}`}
+                >Rp</button>
+                <button
+                  type="button"
+                  onClick={() => { setDiscountMode('percent'); setGlobalDiscount(0); }}
+                  className={`px-2 py-0.5 rounded-md font-medium transition-colors ${discountMode === 'percent' ? 'bg-teal-100 text-teal-700' : 'text-gray-400 hover:text-gray-600'}`}
+                >%</button>
+              </div>
+            </div>
+            <input
+              type="number"
+              value={discountMode === 'percent' ? (discountPercent || '') : (globalDiscount || '')}
+              onChange={e => discountMode === 'percent' ? setDiscountPercent(Number(e.target.value)) : setGlobalDiscount(Number(e.target.value))}
+              placeholder="0"
+              className="w-full text-right px-2 py-1 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-teal-400"
+            />
+            {effectiveDiscount > 0 && (
+              <p className="text-xs text-gray-400 text-right">
+                {discountMode === 'percent' ? `${discountPercent}% = ${formatCurrency(effectiveDiscount)}` : `Diskon ${formatCurrency(effectiveDiscount)}`}
+              </p>
+            )}
+          </div>
+          <div className="flex justify-between text-base font-bold text-gray-900 border-t border-gray-100 pt-2">
+            <span>TOTAL</span>
+            <span className="text-teal-600">{formatCurrency(grandTotal)}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <label className="flex items-center gap-2 text-gray-600"><input type="checkbox" checked={taxEnabled} onChange={e => setTaxEnabled(e.target.checked)} className="accent-teal-500" /> Aktifkan PPN</label>
+            {taxEnabled && <div className="flex items-center gap-1"><input type="number" min="0" max="100" value={taxPercent} onChange={e => setTaxPercent(Math.max(0, Number(e.target.value)))} className="w-16 px-2 py-1 border border-gray-200 rounded-lg text-right text-xs" /><span className="text-gray-500">%</span></div>}
+          </div>
+          {taxEnabled && <div className="flex justify-between text-sm text-gray-500"><span>PPN ({taxPercent}%)</span><span>{formatCurrency(taxAmount)}</span></div>}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-gray-600">Pembulatan / Penyesuaian Manual</span>
+              <span className="text-[10px] text-gray-400">+/− dari total</span>
+            </div>
+            <div className="grid grid-cols-[1fr_130px] gap-2 mt-1">
+              <input
+                type="text"
+                value={roundingDescription}
+                onChange={e => setRoundingDescription(e.target.value)}
+                placeholder="Keterangan, mis. Konsultasi / Donasi"
+                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-teal-400"
+              />
+              <input
+                type="number"
+                value={manualRounding}
+                onChange={e => setManualRounding(e.target.value)}
+                placeholder="0"
+                className="w-full text-right px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-teal-400"
+              />
+            </div>
+          </div>
+          {roundingAmount !== 0 && <div className="flex justify-between text-xs text-gray-500"><span>Setelah pembulatan</span><span className="font-semibold">{formatCurrency(grandTotal)}</span></div>}
+
+          <div className="flex gap-2">
+            <button type="button" onClick={parkSale} disabled={cart.length === 0 || !currentShift} className="flex-1 border border-amber-300 text-amber-700 hover:bg-amber-50 disabled:opacity-40 font-semibold py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"><Pause size={15} /> Parkir</button>
+            <button type="button" onClick={() => setShowPaymentModal(true)} disabled={cart.length === 0 || !currentShift} className="flex-[2] bg-teal-500 hover:bg-teal-600 disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"><CreditCard size={16} /> Pembayaran</button>
+          </div>
+          <div className="relative">
+            <select value="" onChange={e => resumeSale(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-400">
+              <option value="">Daftar Antrean ({parkedSales.length})</option>
+              {parkedSales.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+            </select>
+            <Play size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          </div>
+
+        </div>
+      </div>
+
+      {/* Barcode Scanner */}
+      {showScanner && (
+        <BarcodeScanner
+          title="Scan Barcode - Kasir POS"
+          onScan={handleBarcodeScan}
+          onClose={() => setShowScanner(false)}
+        />
+      )}
+
+      {/* Mobile cart controls are outside the product overflow container so they remain visible. */}
+      {showMobileCart && (
+        <button
+          type="button"
+          onClick={() => setShowMobileCart(false)}
+          className="mobile-cart-backdrop md:hidden"
+          aria-label="Tutup keranjang"
+        />
+      )}
+
+      <button
+        type="button"
+        onClick={() => setShowMobileCart(true)}
+        className={`${showMobileCart ? 'hidden' : 'mobile-cart-launcher'}`}
+        aria-label={`Buka keranjang, ${cart.length} item`}
+      >
+        <span className="flex items-center gap-2 min-w-0">
+          <span className="relative shrink-0">
+            <ShoppingCart size={21} strokeWidth={2.25} />
+            <span className="mobile-cart-badge">{cart.length}</span>
+          </span>
+          <span className="truncate">Keranjang</span>
+        </span>
+        <span className="font-bold whitespace-nowrap">{formatCurrency(grandTotal)}</span>
+      </button>
+
+      {showPaymentModal && (
+        <div className="fixed inset-0 z-50 bg-gray-900/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-5 animate-fade-in">
+            <div className="flex items-center justify-between mb-4">
+              <div><h3 className="text-lg font-bold text-gray-900">Pembayaran Multi-Metode</h3><p className="text-sm text-gray-500">Total: {formatCurrency(grandTotal)}</p></div>
+              <button onClick={() => setShowPaymentModal(false)} className="text-gray-400 hover:text-gray-700"><X size={20} /></button>
+            </div>
+            <div className="space-y-3 max-h-72 overflow-y-auto">
+              {paymentParts.map((part, index) => (
+                <div key={index} className="border border-gray-200 rounded-xl p-3 space-y-2">
+                  <div className="flex gap-2">
+                    <select value={part.method} onChange={e => updatePayment(index, { method: e.target.value as PaymentPart['method'] })} className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"><option value="cash">Tunai</option><option value="qris">QRIS</option><option value="transfer">Transfer Bank</option><option value="card">Kartu Debit/Kredit</option></select>
+                    {paymentParts.length > 1 && <button onClick={() => removePaymentPart(index)} className="text-gray-400 hover:text-red-500"><X size={16} /></button>}
+                  </div>
+                  <div className="flex gap-2">
+                    <input type="number" min="0" value={part.amount} onChange={e => updatePayment(index, { amount: e.target.value })} placeholder="Nominal pembayaran" className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400" />
+                    {(part.method === 'transfer' || part.method === 'card') && <select value={part.bank} onChange={e => updatePayment(index, { bank: e.target.value })} className="w-36 px-2 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"><option value="">Bank</option>{BANKS.map(bank => <option key={bank} value={bank}>{bank}</option>)}</select>}
+                  </div>
+                  {part.method === 'cash' && <div className="flex gap-1.5"><button type="button" onClick={() => updatePayment(index, { amount: String(grandTotal) })} className="px-2 py-1 text-xs border border-teal-200 text-teal-700 rounded-md">Uang pas</button><button type="button" onClick={() => updatePayment(index, { amount: '50000' })} className="px-2 py-1 text-xs border border-gray-200 text-gray-600 rounded-md">Rp50.000</button><button type="button" onClick={() => updatePayment(index, { amount: '100000' })} className="px-2 py-1 text-xs border border-gray-200 text-gray-600 rounded-md">Rp100.000</button></div>}
+                </div>
+              ))}
+            </div>
+            <button type="button" onClick={addPaymentPart} className="mt-3 text-sm font-semibold text-teal-600 hover:text-teal-700">+ Tambah metode pembayaran</button>
+            <div className="mt-4 border-t border-gray-100 pt-3 space-y-1 text-sm"><div className="flex justify-between"><span className="text-gray-500">Terbayar</span><span className="font-semibold">{formatCurrency(paidAmount)}</span></div><div className="flex justify-between"><span className="text-gray-500">Kembalian tunai</span><span className="font-bold text-green-600">{formatCurrency(change)}</span></div>{paidAmount < grandTotal && <p className="text-red-500 text-xs">Sisa pembayaran: {formatCurrency(grandTotal - paidAmount)}</p>}</div>
+            <button onClick={() => { setShowPaymentModal(false); handleCheckout(); }} disabled={loading || paidAmount < grandTotal} className="w-full mt-4 bg-teal-500 hover:bg-teal-600 disabled:opacity-50 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2">{loading ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Printer size={16} />} {loading ? 'Memproses...' : 'Selesaikan & Cetak Struk'}</button>
+          </div>
+        </div>
+      )}
+
+      {showQuickPatient && (
+        <div className="fixed inset-0 z-50 bg-gray-900/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5">
+            <div className="flex items-center justify-between mb-4"><h3 className="text-lg font-bold text-gray-900">Tambah Pasien Cepat</h3><button onClick={() => setShowQuickPatient(false)} className="text-gray-400 hover:text-gray-700"><X size={20} /></button></div>
+            <div className="space-y-3"><input value={quickPatientName} onChange={e => setQuickPatientName(e.target.value)} placeholder="Nama pasien *" className="input" /><input value={quickPatientPhone} onChange={e => setQuickPatientPhone(e.target.value)} placeholder="No. telepon" className="input" /><select value={quickPatientGender} onChange={e => setQuickPatientGender(e.target.value as 'L' | 'P')} className="input"><option value="L">Laki-laki</option><option value="P">Perempuan</option></select></div>
+            <button onClick={quickAddPatient} disabled={!quickPatientName.trim()} className="w-full mt-4 bg-teal-500 hover:bg-teal-600 disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl">Simpan Pasien</button>
+          </div>
+        </div>
+      )}
+
+      {showOpenShiftModal && (
+        <div className="fixed inset-0 z-[80] bg-gray-900/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-center gap-3 mb-5"><div className="w-11 h-11 rounded-xl bg-teal-100 flex items-center justify-center"><Clock size={22} className="text-teal-600" /></div><div><h3 className="text-lg font-bold text-gray-900">Buka Shift Kasir</h3><p className="text-sm text-gray-500">Masukkan uang kembalian awal sebelum transaksi.</p></div></div>
+            <div className="space-y-4">
+              <div><label className="text-xs font-semibold text-gray-600">Shift</label><div className="grid grid-cols-2 gap-2 mt-1"><button type="button" onClick={() => setOpeningShiftType('morning')} className={`py-2.5 rounded-lg border text-sm font-semibold ${openingShiftType === 'morning' ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-gray-200 text-gray-600'}`}>Pagi</button><button type="button" onClick={() => setOpeningShiftType('evening')} className={`py-2.5 rounded-lg border text-sm font-semibold ${openingShiftType === 'evening' ? 'border-teal-500 bg-teal-50 text-teal-700' : 'border-gray-200 text-gray-600'}`}>Malam</button></div></div>
+              <div><label className="text-xs font-semibold text-gray-600">Uang Kembalian Awal</label><div className="relative mt-1"><Banknote size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" /><input autoFocus type="number" min="0" value={openingCash} onChange={e => setOpeningCash(e.target.value)} placeholder="Contoh: 500000" className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400" /></div></div>
+              <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 text-xs text-blue-700">Uang awal ini bukan penjualan. Saat shift ditutup, sistem akan menghitung uang yang seharusnya tersedia = uang awal + penerimaan tunai - kembalian.</div>
+              <button type="button" onClick={() => void openShift()} disabled={shiftSaving || shiftLoading} className="w-full bg-teal-500 hover:bg-teal-600 disabled:opacity-50 text-white py-3 rounded-xl font-semibold">{shiftSaving ? 'Membuka shift...' : 'Buka Shift & Mulai Transaksi'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCloseShiftModal && currentShift && (
+        <div className="fixed inset-0 z-[80] bg-gray-900/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6">
+            <div className="flex items-center justify-between mb-5"><div><h3 className="text-lg font-bold text-gray-900">Tutup Shift {currentShift.shift_type === 'morning' ? 'Pagi' : 'Malam'}</h3><p className="text-sm text-gray-500">Collect uang hasil penjualan dan cocokkan kas fisik.</p></div><button onClick={() => setShowCloseShiftModal(false)} className="text-gray-400 hover:text-gray-700"><X size={20} /></button></div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-500">Transaksi</p><p className="font-bold text-gray-900">{shiftSummary.transactions}</p></div>
+              <div className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-500">Total Penjualan</p><p className="font-bold text-teal-600">{formatCurrency(shiftSummary.sales)}</p></div>
+              <div className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-500">Tunai Masuk</p><p className="font-bold text-gray-900">{formatCurrency(shiftSummary.cashSales)}</p></div>
+              <div className="bg-gray-50 rounded-xl p-3"><p className="text-xs text-gray-500">Kembalian</p><p className="font-bold text-gray-900">{formatCurrency(shiftSummary.change)}</p></div>
+            </div>
+            <div className="mt-4 p-4 rounded-xl bg-teal-50 border border-teal-100"><div className="flex justify-between text-sm"><span>Uang awal</span><b>{formatCurrency(currentShift.opening_cash)}</b></div><div className="flex justify-between text-base font-bold mt-2"><span>Kas seharusnya</span><span className="text-teal-700">{formatCurrency(shiftSummary.expectedCash)}</span></div></div>
+            <div className="mt-4"><label className="text-xs font-semibold text-gray-600">Kas fisik yang dikumpulkan</label><input autoFocus type="number" min="0" value={actualClosingCash} onChange={e => setActualClosingCash(e.target.value)} placeholder="Masukkan hasil hitung uang fisik" className="w-full mt-1 px-3 py-3 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400" /></div>
+            {actualClosingCash.trim() !== '' && <div className={`mt-3 p-3 rounded-lg text-sm font-semibold ${(Number(actualClosingCash) || 0) - shiftSummary.expectedCash === 0 ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>Selisih kas: {formatCurrency((Number(actualClosingCash) || 0) - shiftSummary.expectedCash)}</div>}
+            <button type="button" onClick={() => void closeShift()} disabled={shiftSaving || actualClosingCash.trim() === ''} className="w-full mt-4 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2"><LogOut size={16} /> {shiftSaving ? 'Menyimpan...' : 'Collect & Tutup Shift'}</button>
+          </div>
+        </div>
+      )}
+
+      {/* Success Toast */}
+      {success && (
+        <div className="fixed top-6 right-6 bg-white border border-green-200 rounded-2xl shadow-xl p-4 flex items-center gap-3 z-50 animate-slide-in">
+          <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
+            <CheckCircle size={20} className="text-green-600" />
+          </div>
+          <div>
+            <p className="font-semibold text-gray-800">Transaksi Berhasil!</p>
+            <p className="text-sm text-gray-500">Invoice: {success}</p>
+          </div>
+          <button onClick={() => setSuccess(null)} className="ml-4 text-gray-400 hover:text-gray-600 text-lg font-bold">×</button>
+        </div>
+      )}
+
+      {completedReceipt && (
+        <div className="fixed inset-0 z-[60] bg-gray-900/40 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center"><CheckCircle size={24} className="text-green-600" /></div>
+              <div><h3 className="text-lg font-bold text-gray-900">Transaksi berhasil</h3><p className="text-sm text-gray-500">Invoice {completedReceipt.invoiceNumber} telah tersimpan.</p></div>
+              </div>
+              <button onClick={closeCompletedReceipt} className="text-gray-400 hover:text-gray-700 text-xl" aria-label="Tutup">×</button>
+            </div>
+            <div className="flex gap-2 mt-6">
+              <button onClick={printCompletedReceipt} disabled={isPrinting} className="flex-1 bg-teal-500 hover:bg-teal-600 disabled:opacity-60 text-white rounded-xl py-2.5 text-sm font-semibold flex items-center justify-center gap-2"><Printer size={16} /> {isPrinting ? 'Menyiapkan...' : 'Cetak Struk'}</button>
+              <button onClick={closeCompletedReceipt} disabled={isPrinting} className="flex-1 border border-gray-200 hover:bg-gray-50 disabled:opacity-60 rounded-xl py-2.5 text-sm font-semibold text-gray-700">Transaksi Baru</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ShoppingCartEmpty() {
+  return (
+    <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mb-3">
+      <Printer size={24} className="text-gray-300" />
+    </div>
+  );
+}
