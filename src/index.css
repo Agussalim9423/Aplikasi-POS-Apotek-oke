@@ -578,3 +578,208 @@ button, a, input, select, textarea { touch-action: manipulation; }
     overflow-y: auto !important;
   }
 }
+
+
+/* =========================================================
+   MOBILE + TABLET CASHIER
+   Up to 1023px: no desktop sidebar, no horizontal cart table.
+   The medicine list becomes compact touch-friendly cards.
+   ========================================================= */
+@media (max-width: 1023px) {
+  html, body, #root {
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .kasir-cart-fullscreen {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .kasir-cart-fullscreen .kasir-cart-patient {
+    flex-shrink: 0 !important;
+    padding: .55rem .65rem !important;
+    background: #fff !important;
+  }
+
+  .kasir-cart-fullscreen .kasir-cart-items {
+    flex: 1 1 0% !important;
+    min-height: 0 !important;
+    width: 100% !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Remove the desktop table's fixed 860px width. */
+  .kasir-cart-fullscreen .kasir-cart-items > div {
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .kasir-cart-fullscreen .kasir-cart-items > div > .grid:first-child {
+    display: none !important;
+  }
+
+  .kasir-cart-fullscreen .kasir-cart-items > div > .divide-y > .grid {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    gap: .35rem .6rem !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    padding: .65rem .7rem !important;
+    border-bottom: 1px solid #f1f5f9;
+  }
+
+  /* No. */
+  .kasir-cart-fullscreen .kasir-cart-items > div > .divide-y > .grid > :nth-child(1) {
+    display: none !important;
+  }
+
+  /* Medicine name */
+  .kasir-cart-fullscreen .kasir-cart-items > div > .divide-y > .grid > :nth-child(2) {
+    grid-column: 1 / -1 !important;
+    grid-row: 1 !important;
+    min-width: 0 !important;
+  }
+
+  .kasir-cart-fullscreen .kasir-cart-items > div > .divide-y > .grid > :nth-child(2) p:first-child {
+    font-size: .82rem !important;
+    line-height: 1.15rem !important;
+  }
+
+  /* Unit and desktop unit price columns are not needed on the compact card. */
+  .kasir-cart-fullscreen .kasir-cart-items > div > .divide-y > .grid > :nth-child(3),
+  .kasir-cart-fullscreen .kasir-cart-items > div > .divide-y > .grid > :nth-child(4) {
+    display: none !important;
+  }
+
+  /* Quantity */
+  .kasir-cart-fullscreen .kasir-cart-items > div > .divide-y > .grid > :nth-child(5) {
+    grid-column: 1 !important;
+    grid-row: 2 !important;
+    justify-content: flex-start !important;
+  }
+
+  .kasir-cart-fullscreen .kasir-cart-items > div > .divide-y > .grid > :nth-child(5) input {
+    width: 3.5rem !important;
+    height: 2.15rem !important;
+    font-size: .8rem !important;
+  }
+
+  .kasir-cart-fullscreen .kasir-cart-items > div > .divide-y > .grid > :nth-child(5) button {
+    width: 2.15rem !important;
+    height: 2.15rem !important;
+    touch-action: manipulation;
+  }
+
+  /* Item discount: keep available for general sales, but compact. */
+  .kasir-cart-fullscreen .kasir-cart-items > div > .divide-y > .grid > :nth-child(6) {
+    display: none !important;
+  }
+
+  /* Subtotal */
+  .kasir-cart-fullscreen .kasir-cart-items > div > .divide-y > .grid > :nth-child(7) {
+    grid-column: 2 !important;
+    grid-row: 2 !important;
+    align-self: center !important;
+    text-align: right !important;
+  }
+
+  /* Actions */
+  .kasir-cart-fullscreen .kasir-cart-items > div > .divide-y > .grid > :nth-child(8) {
+    grid-column: 2 !important;
+    grid-row: 3 !important;
+    justify-content: flex-end !important;
+    min-height: 28px !important;
+  }
+
+  /* Prescription/unit/usage details */
+  .kasir-cart-fullscreen .kasir-cart-items > div > .divide-y > .grid > :nth-child(9) {
+    grid-column: 1 / -1 !important;
+    grid-row: 3 !important;
+    min-width: 0 !important;
+    padding-left: 0 !important;
+    margin-top: 0 !important;
+    padding-bottom: 0 !important;
+    display: grid !important;
+    grid-template-columns: minmax(0,1fr) !important;
+  }
+
+  .kasir-cart-fullscreen .kasir-cart-items > div > .divide-y > .grid > :nth-child(9) input,
+  .kasir-cart-fullscreen .kasir-cart-items > div > .divide-y > .grid > :nth-child(9) select {
+    min-width: 0 !important;
+    width: 100% !important;
+    height: 2rem !important;
+  }
+
+  .kasir-cart-fullscreen .kasir-payment-summary {
+    flex-shrink: 0 !important;
+    width: 100% !important;
+    max-height: 210px !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    padding: .45rem .65rem !important;
+    gap: .35rem !important;
+  }
+
+  .kasir-cart-fullscreen .kasir-payment-summary > .space-y-1\.5 {
+    grid-template-columns: auto minmax(0, 1fr) !important;
+  }
+
+  .kasir-cart-fullscreen .kasir-payment-summary > .flex.justify-between.text-base {
+    font-size: .9rem !important;
+  }
+
+  .kasir-cart-fullscreen .kasir-payment-summary .py-2\.5 {
+    min-height: 2.45rem !important;
+    padding-top: .45rem !important;
+    padding-bottom: .45rem !important;
+    touch-action: manipulation;
+  }
+
+  /* Search, patient and doctor controls must stay above the cart. */
+  .kasir-cart-fullscreen .kasir-cart-patient input,
+  .kasir-cart-fullscreen .kasir-cart-patient button {
+    min-height: 2.5rem;
+  }
+
+  .kasir-cart-fullscreen .kasir-cart-patient .grid {
+    gap: .45rem !important;
+  }
+
+  /* Keep sale-type tabs usable on narrow screens. */
+  .kasir-cart-fullscreen + * {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 639px) {
+  .kasir-cart-fullscreen .kasir-cart-patient {
+    padding: .45rem .5rem !important;
+  }
+
+  .kasir-cart-fullscreen .kasir-cart-patient .grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .kasir-cart-fullscreen .kasir-cart-items > div > .divide-y > .grid {
+    padding: .55rem .6rem !important;
+  }
+
+  .kasir-cart-fullscreen .kasir-payment-summary {
+    max-height: 235px !important;
+  }
+}
+
+/* iPad portrait: use a little more vertical space for the cart. */
+@media (min-width: 640px) and (max-width: 1023px) {
+  .kasir-cart-fullscreen .kasir-payment-summary {
+    max-height: 190px !important;
+  }
+}
