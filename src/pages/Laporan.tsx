@@ -62,6 +62,7 @@ export default function Laporan() {
 }
 
 function PenjualanTab() {
+  const { profile } = useAuth();
   const [sales, setSales] = useState<(Sale & { patients: { name: string } | null; doctors: { name: string } | null })[]>([]);
   const [search, setSearch] = useState('');
   const [dateFrom, setDateFrom] = useState('');
