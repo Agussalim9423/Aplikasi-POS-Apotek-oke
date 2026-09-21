@@ -129,9 +129,11 @@ function PenjualanTab() {
     const { data } = await query;
     setSales((data ?? []) as any);
 
-    const itemsRes = await tenantFrom('sale_items').select('sale_id, medicine_name, quantity, total_price, cost_price, medicines(unit)');
-    const saleIdSet = new Set((data ?? []).map((sale: { id: string }) => sale.id));
-    setReportHpp((itemsRes.data ?? []).filter((item: { sale_id: string }) => saleIdSet.has(item.sale_id)).reduce((sum: number, item: { cost_price?: number; quantity: number }) => sum + (item.cost_price ?? 0) * item.quantity, 0));
+    const saleIds = (data ?? []).map((sale: { id: string }) => sale.id);
+    const itemsRes = saleIds.length > 0
+      ? await tenantFrom('sale_items').select('sale_id, medicine_name, quantity, total_price, cost_price, medicines(unit)').in('sale_id', saleIds)
+      : { data: [], error: null };
+    setReportHpp((itemsRes.data ?? []).reduce((sum: number, item: { cost_price?: number; quantity: number }) => sum + (item.cost_price ?? 0) * item.quantity, 0));
     const medMap = new Map<string, { name: string; total_qty: number; total_revenue: number; unit: string }>();
     for (const item of (itemsRes.data ?? [])) {
       const key = item.medicine_name ?? '';
@@ -321,7 +323,7 @@ function PenjualanTab() {
         {filtered.length === 0 && <div className="text-center text-gray-400 py-16"><p>Belum ada transaksi</p></div>}
       </div>
 
-      {viewSale && <SaleDetail sale={viewSale} onClose={() => setViewSale(null)} />}
+      {viewSale && <SaleDetail sale={viewSale} pharmacy={pharmacyIdentity} onClose={() => setViewSale(null)} />}
 
       {deleteTarget && (
         <Modal title="Konfirmasi Hapus Transaksi" onClose={() => !deleting && setDeleteTarget(null)}>
@@ -643,7 +645,7 @@ function KeuntunganTab() {
   );
 }
 
-function SaleDetail({ sale, onClose }: { sale: Sale & { sale_items: SaleItem[] | null; patients: { name: string } | null; doctors: { name: string } | null }; onClose: () => void }) {
+function SaleDetail({ sale, pharmacy, onClose }: { sale: Sale & { sale_items: SaleItem[] | null; patients: { name: string } | null; doctors: { name: string } | null }; pharmacy: { name: string; address: string; phone: string; pharmacistName: string; sipaNumber: string; siaNumber: string }; onClose: () => void }) {
   function printSale() {
     const escapeHtml = (value: string) => value
       .replace(/&/g, '&amp;')
@@ -655,7 +657,7 @@ function SaleDetail({ sale, onClose }: { sale: Sale & { sale_items: SaleItem[] |
       `<div>${escapeHtml(item.medicine_name ?? '-')} x${item.quantity}<span style="float:right">${formatCurrency(item.total_price)}</span></div>`
     ).join('');
 
-    const p = pharmacyIdentity;
+    const p = pharmacy;
     const identity = [
       `<b>${escapeHtml(p.name)}</b>`,
       p.address ? escapeHtml(p.address) : '',
