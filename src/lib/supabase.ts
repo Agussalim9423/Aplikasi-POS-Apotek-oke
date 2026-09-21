@@ -6,47 +6,12 @@ const supabaseUrl =
 const supabaseAnonKey =
   import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-/*
- * Safari/iOS 15.8 compatibility.
- *
- * AbortSignal.timeout() is not available on Safari/iOS 15.x.
- * Use AbortController + setTimeout instead so Supabase requests
- * work on older iPad Safari versions as well as modern browsers.
- */
-function fetchWithTimeout(
-  input: RequestInfo | URL,
-  init?: RequestInit,
-): Promise<Response> {
-  const originalSignal = init?.signal;
-
-  // If the caller already supplied a signal, preserve it.
-  if (originalSignal || typeof AbortController === 'undefined') {
-    return fetch(input, init);
-  }
-
-  const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => {
-    controller.abort();
-  }, 15000);
-
-  return fetch(input, {
-    ...init,
-    signal: controller.signal,
-  }).finally(() => {
-    window.clearTimeout(timeoutId);
-  });
-}
-
 export const supabase = createClient(
   supabaseUrl,
   supabaseAnonKey,
   {
     auth: {
       persistSession: false,
-    },
-
-    global: {
-      fetch: fetchWithTimeout,
     },
   },
 );
