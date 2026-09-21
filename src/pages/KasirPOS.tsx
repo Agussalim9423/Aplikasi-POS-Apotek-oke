@@ -1195,7 +1195,7 @@ async function loadData() {
                     </div>
 
                     {saleType !== 'regular' && (
-                      <div className="col-span-full pl-[44px] -mt-1 pb-1 grid grid-cols-[minmax(260px,1fr)_220px] gap-2">
+                      <div className="col-span-full pl-[44px] -mt-1 pb-1 grid grid-cols-1 lg:grid-cols-[minmax(220px,.8fr)_minmax(260px,1fr)_180px] gap-2">
                         {getUnitOptions(item.medicine.id).length > 0 ? (
                           <select value={item.unit?.id ?? ''} onChange={e => updateItemUnit(item.medicine.id, e.target.value)}
                             className="w-full h-7 px-2 border border-gray-200 rounded-md text-[11px]">
@@ -1204,8 +1204,11 @@ async function loadData() {
                               <option key={unit.id} value={unit.id}>{unit.unit_name} · {formatCurrency(unit.price_regular)} · isi {unit.conversion_factor}</option>
                             ))}
                           </select>
-                        ) : <span />}
-                        <input type="number" min="1" value={item.maxQuantity ?? ''}
+                        ) : <div />}
+                        <input value={item.usage} onChange={e => updateItemDetail(item.medicine.id, 'usage', e.target.value)}
+                          placeholder="Aturan pakai, mis. 3 x 1"
+                          className="w-full h-7 px-2 border border-gray-200 rounded-md text-[11px]" />
+                        <input type="number" min="0.25" step="0.25" value={item.maxQuantity ?? ''}
                           onChange={e => updateItemDetail(item.medicine.id, 'maxQuantity', e.target.value)}
                           placeholder="Maks. qty (opsional)"
                           className="w-full h-7 px-2 border border-gray-200 rounded-md text-[11px]" />
