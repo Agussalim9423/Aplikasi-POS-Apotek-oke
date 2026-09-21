@@ -115,13 +115,13 @@ export default function Layout({
         <button
           type="button"
           aria-label="Tutup menu"
-          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+          className="fixed inset-0 z-40 bg-black/40 lg:hidden"
           onClick={() => setMobileOpen(false)}
         />
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-white border-r border-gray-200 w-[min(84vw,20rem)] flex-shrink-0 transform transition-transform duration-300 md:relative md:translate-x-0 md:transition-all ${mobileOpen ? 'translate-x-0' : '-translate-x-full'} ${collapsed ? 'md:w-16' : 'md:w-64'}`}
+        className={`fixed inset-y-0 left-0 z-50 flex flex-col bg-white border-r border-gray-200 w-[min(84vw,20rem)] flex-shrink-0 transform transition-transform duration-300 lg:relative lg:translate-x-0 lg:transition-all ${mobileOpen ? 'translate-x-0' : '-translate-x-full'} ${collapsed ? 'lg:w-16' : 'lg:w-64'}`}
       >
         <div className={`flex items-center gap-3 px-4 py-5 border-b border-gray-100 ${collapsed ? 'justify-center' : ''}`}>
           <div className="w-9 h-9 bg-teal-500 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -149,7 +149,7 @@ export default function Layout({
           </div>
         )}
 
-        <div className="md:hidden flex items-center justify-between px-4 py-2 border-b border-gray-100">
+        <div className="lg:hidden flex items-center justify-between px-4 py-2 border-b border-gray-100">
           <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Menu</span>
           <button type="button" onClick={() => setMobileOpen(false)} className="p-2 rounded-lg text-gray-500 hover:bg-gray-100" aria-label="Tutup menu">
             <ChevronLeft size={18} />
@@ -212,7 +212,7 @@ export default function Layout({
       </aside>
 
       <main className="flex-1 min-w-0 overflow-hidden flex flex-col">
-        <div className="md:hidden sticky top-0 z-30 flex items-center gap-3 px-4 py-3 bg-white border-b border-gray-200 shadow-sm">
+        <div className="lg:hidden sticky top-0 z-30 flex items-center gap-3 px-4 py-3 bg-white border-b border-gray-200 shadow-sm">
           <button type="button" onClick={() => setMobileOpen(true)} className="p-2 rounded-lg text-gray-600 hover:bg-gray-100" aria-label="Buka menu">
             <Menu size={20} />
           </button>
@@ -223,7 +223,7 @@ export default function Layout({
         </div>
 
         <div className="flex-1 min-h-0 overflow-auto">{children}</div>
-        <footer className="app-footer border-t border-gray-100 bg-white px-4 md:px-6 py-3 text-center shrink-0">
+        <footer className="app-footer border-t border-gray-100 bg-white px-4 lg:px-6 py-3 text-center shrink-0">
           <p className="text-xs text-gray-400">{displayFooter}</p>
         </footer>
       </main>
