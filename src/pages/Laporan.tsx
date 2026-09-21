@@ -77,6 +77,7 @@ function PenjualanTab() {
   const [deleting, setDeleting] = useState(false);
   const [topMedicines, setTopMedicines] = useState<{ name: string; total_qty: number; total_revenue: number; unit: string }[]>([]);
   const [reportHpp, setReportHpp] = useState(0);
+  const [loadError, setLoadError] = useState('');
   const [pharmacyIdentity, setPharmacyIdentity] = useState({
     name: profile?.tenant?.name ?? 'Apotek',
     address: profile?.tenant?.address ?? '',
@@ -121,39 +122,87 @@ function PenjualanTab() {
 
   async function load() {
     setLoading(true);
-    let query = tenantFrom('sales').select('*, patients(name), doctors(name)').order('sale_date', { ascending: false });
-    const range = getPeriodDates();
-    if (range.from) query = query.gte('sale_date', new Date(range.from).toISOString());
-    if (range.to) query = query.lte('sale_date', new Date(range.to + 'T23:59:59').toISOString());
-    if (saleTypeFilter !== 'all') query = query.eq('sale_type', saleTypeFilter);
-    const { data } = await query;
-    setSales((data ?? []) as any);
+    setLoadError('');
+    try {
+      const range = getPeriodDates();
+      let query = tenantFrom('sales').select('*').order('sale_date', { ascending: false });
+      if (range.from) query = query.gte('sale_date', new Date(range.from).toISOString());
+      if (range.to) query = query.lte('sale_date', new Date(range.to + 'T23:59:59').toISOString());
+      if (saleTypeFilter !== 'all') query = query.eq('sale_type', saleTypeFilter);
 
-    const saleIds = (data ?? []).map((sale: { id: string }) => sale.id);
-    const itemsRes = saleIds.length > 0
-      ? await tenantFrom('sale_items').select('sale_id, medicine_name, quantity, total_price, cost_price, medicines(unit)').in('sale_id', saleIds)
-      : { data: [], error: null };
-    setReportHpp((itemsRes.data ?? []).reduce((sum: number, item: { cost_price?: number; quantity: number }) => sum + (item.cost_price ?? 0) * item.quantity, 0));
-    const medMap = new Map<string, { name: string; total_qty: number; total_revenue: number; unit: string }>();
-    for (const item of (itemsRes.data ?? [])) {
-      const key = item.medicine_name ?? '';
-      if (!key) continue;
-      const existing = medMap.get(key);
-      if (existing) {
-        existing.total_qty += item.quantity;
-        existing.total_revenue += item.total_price;
-      } else {
-        medMap.set(key, { name: key, total_qty: item.quantity, total_revenue: item.total_price, unit: (item.medicines as { unit?: string } | null)?.unit ?? 'pcs' });
+      const salesRes = await query;
+      if (salesRes.error) throw salesRes.error;
+
+      const rawSales = (salesRes.data ?? []) as Sale[];
+      const doctorIds = Array.from(new Set(rawSales.map(s => s.doctor_id).filter(Boolean)));
+      let doctorMap = new Map<string, { name: string }>();
+
+      if (doctorIds.length > 0) {
+        const doctorsRes = await tenantFrom('doctors').select('id, name').in('id', doctorIds);
+        if (doctorsRes.error) throw doctorsRes.error;
+        doctorMap = new Map((doctorsRes.data ?? []).map((d: { id: string; name: string }) => [d.id, { name: d.name }]));
       }
+
+      const normalizedSales = rawSales.map(s => ({
+        ...s,
+        patients: null,
+        doctors: s.doctor_id ? (doctorMap.get(s.doctor_id) ?? null) : null,
+      }));
+      setSales(normalizedSales as any);
+
+      const saleIds = rawSales.map(s => s.id);
+      const itemsRes = saleIds.length > 0
+        ? await tenantFrom('sale_items').select('sale_id, medicine_name, quantity, total_price, cost_price').in('sale_id', saleIds)
+        : { data: [], error: null };
+
+      if (itemsRes.error) throw itemsRes.error;
+
+      const items = (itemsRes.data ?? []) as Array<{
+        sale_id: string;
+        medicine_name: string | null;
+        quantity: number;
+        total_price: number;
+        cost_price: number;
+      }>;
+
+      setReportHpp(items.reduce(
+        (sum, item) => sum + Number(item.cost_price || 0) * Number(item.quantity || 0),
+        0
+      ));
+
+      const medMap = new Map<string, { name: string; total_qty: number; total_revenue: number; unit: string }>();
+      for (const item of items) {
+        const key = item.medicine_name ?? '';
+        if (!key) continue;
+        const existing = medMap.get(key);
+        const qty = Number(item.quantity || 0);
+        const revenue = Number(item.total_price || 0);
+        if (existing) {
+          existing.total_qty += qty;
+          existing.total_revenue += revenue;
+        } else {
+          medMap.set(key, { name: key, total_qty: qty, total_revenue: revenue, unit: 'pcs' });
+        }
+      }
+
+      setTopMedicines(Array.from(medMap.values()).sort((a, b) => b.total_qty - a.total_qty).slice(0, 10));
+    } catch (error) {
+      console.error('Gagal memuat laporan penjualan:', error);
+      setSales([]);
+      setTopMedicines([]);
+      setReportHpp(0);
+      setLoadError(error instanceof Error ? error.message : 'Gagal memuat laporan.');
+    } finally {
+      setLoading(false);
     }
-    setTopMedicines(Array.from(medMap.values()).sort((a, b) => b.total_qty - a.total_qty).slice(0, 10));
-    setLoading(false);
   }
 
-  const filtered = sales.filter(s =>
-    s.invoice_number.toLowerCase().includes(search.toLowerCase()) ||
-    (s.patient_name ?? '').toLowerCase().includes(search.toLowerCase())
-  ).filter(s => !patientFilter || (s.patient_name ?? s.patients?.name ?? '').toLowerCase().includes(patientFilter.toLowerCase()))
+  const filtered = sales.filter(s => {
+    const invoice = String(s.invoice_number ?? '').toLowerCase();
+    const patient = String(s.patient_name ?? s.patients?.name ?? '').toLowerCase();
+    const q = search.toLowerCase();
+    return invoice.includes(q) || patient.includes(q);
+  }).filter(s => !patientFilter || String(s.patient_name ?? s.patients?.name ?? '').toLowerCase().includes(patientFilter.toLowerCase()))
     .filter(s => !doctorFilter || s.doctor_id === doctorFilter);
 
   const totalRevenue = filtered.reduce((s, r) => s + r.total, 0);
@@ -201,7 +250,16 @@ function PenjualanTab() {
     URL.revokeObjectURL(url);
   }
 
-  if (loading) return <div className="flex items-center justify-center h-full"><div className="animate-spin w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full" /></div>;
+  if (loading) return <div className="flex min-h-[240px] items-center justify-center"><div className="animate-spin w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full" /></div>;
+
+  if (loadError) return (
+    <div className="bg-white rounded-2xl border border-red-100 shadow-sm p-8 text-center">
+      <AlertTriangle className="mx-auto text-red-500" size={32} />
+      <h3 className="mt-3 font-bold text-gray-800">Laporan tidak dapat dimuat</h3>
+      <p className="mt-2 text-sm text-gray-500">{loadError}</p>
+      <button onClick={load} className="mt-4 bg-teal-500 hover:bg-teal-600 text-white px-4 py-2.5 rounded-xl text-sm font-semibold">Coba Lagi</button>
+    </div>
+  );
 
   return (
     <div className="space-y-4">
