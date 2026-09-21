@@ -504,8 +504,24 @@ async function loadData() {
   function changeSaleType(nextType: 'regular' | 'prescription' | 'doctor') {
     setSaleType(nextType);
     setPrescriptionError('');
-    // Per-item discounts are exclusive to general sales.
-    setCart(prev => prev.map(item => ({ ...item, discount: 0 })));
+    // Pecahan hanya berlaku pada penjualan resep. Saat berpindah ke
+    // penjualan umum/dokter, normalisasi qty pecahan menjadi bilangan bulat.
+    setCart(prev => prev.map(item => ({
+      ...item,
+      quantity: nextType === 'prescription'
+        ? item.quantity
+        : Math.max(1, Math.ceil(item.quantity)),
+      discount: 0,
+    })));
+  }
+
+  function normalizePrescriptionQuantity(value: number) {
+    if (!Number.isFinite(value)) return 0.25;
+    return Math.round(value * 4) / 4;
+  }
+
+  function getQuantityStep() {
+    return saleType === 'prescription' ? 0.25 : 1;
   }
 
   function getPrice(med: Medicine): number {
@@ -546,11 +562,15 @@ async function loadData() {
     }
   }, [medicines]);
 
-  function updateQty(id: string, delta: number) {
+  function updateQty(id: string, delta?: number) {
+    const step = delta ?? getQuantityStep();
     setCart(prev => prev.map(i => {
       if (i.medicine.id !== id) return i;
-      const newQty = i.quantity + delta;
-      if (newQty < 1) return i;
+      const newQty = saleType === 'prescription'
+        ? normalizePrescriptionQuantity(i.quantity + step)
+        : i.quantity + step;
+      const minQty = saleType === 'prescription' ? 0.25 : 1;
+      if (newQty < minQty) return i;
       if (newQty > i.medicine.stock || (i.maxQuantity !== null && newQty > i.maxQuantity)) return i;
       return { ...i, quantity: newQty };
     }));
@@ -559,9 +579,27 @@ async function loadData() {
   function setQty(id: string, qty: number) {
     setCart(prev => prev.map(i => {
       if (i.medicine.id !== id) return i;
-      if (isNaN(qty) || qty < 1) return { ...i, quantity: 1 };
-      if (qty > i.medicine.stock || (i.maxQuantity !== null && qty > i.maxQuantity)) return { ...i, quantity: Math.min(i.medicine.stock, i.maxQuantity ?? i.medicine.stock) };
-      return { ...i, quantity: qty };
+
+      const minQty = saleType === 'prescription' ? 0.25 : 1;
+      const nextQty = saleType === 'prescription'
+        ? normalizePrescriptionQuantity(qty)
+        : Math.round(qty);
+
+      if (!Number.isFinite(nextQty) || nextQty < minQty) {
+        return { ...i, quantity: minQty };
+      }
+
+      if (nextQty > i.medicine.stock || (i.maxQuantity !== null && nextQty > i.maxQuantity)) {
+        return {
+          ...i,
+          quantity: Math.min(
+            i.medicine.stock,
+            i.maxQuantity ?? i.medicine.stock
+          ),
+        };
+      }
+
+      return { ...i, quantity: nextQty };
     }));
   }
 
@@ -1070,9 +1108,17 @@ async function loadData() {
 
                   <div className="flex flex-wrap items-center justify-between gap-3 mt-2">
                     <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
-                      <button type="button" onClick={() => updateQty(item.medicine.id, -1)} className="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-gray-900"><Minus size={13} /></button>
-                      <input type="number" value={item.quantity} onChange={e => setQty(item.medicine.id, parseInt(e.target.value))} className="w-12 text-center text-sm font-semibold bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
-                      <button type="button" onClick={() => updateQty(item.medicine.id, 1)} className="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-gray-900"><Plus size={13} /></button>
+                      <button type="button" onClick={() => updateQty(item.medicine.id, saleType === 'prescription' ? -0.25 : -1)} className="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-gray-900"><Minus size={13} /></button>
+                      <input
+                        type="number"
+                        min={saleType === 'prescription' ? 0.25 : 1}
+                        max={Math.min(item.medicine.stock, item.maxQuantity ?? item.medicine.stock)}
+                        step={saleType === 'prescription' ? 0.25 : 1}
+                        value={item.quantity}
+                        onChange={e => setQty(item.medicine.id, Number(e.target.value))}
+                        className="w-16 text-center text-sm font-semibold bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      />
+                      <button type="button" onClick={() => updateQty(item.medicine.id, saleType === 'prescription' ? 0.25 : 1)} className="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-gray-900"><Plus size={13} /></button>
                     </div>
                     <div className="text-right">
                       <span className="text-sm font-bold text-gray-800">{formatCurrency(Math.max(0, getItemPrice(item) * item.quantity - item.discount))}</span>
