@@ -948,7 +948,7 @@ async function loadData() {
   return (
     <div className="kasir-cart-fullscreen flex h-full min-h-0 flex-col bg-gray-50">
       {/* Jenis Penjualan */}
-      <div className="shrink-0 bg-white border-b border-gray-100 px-4 py-3">
+      <div className="kasir-sale-header shrink-0 bg-white border-b border-gray-100 px-4 py-2.5">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <div className="shrink-0">
