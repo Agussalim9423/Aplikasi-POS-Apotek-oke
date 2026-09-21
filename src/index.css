@@ -401,3 +401,101 @@ button, a, input, select, textarea { touch-action: manipulation; }
     flex-basis: 560px !important;
   }
 }
+
+
+/* =========================================================
+   CASHIER CART-ONLY MODE
+   Medicine search lives inside the cart; product grid is removed.
+   ========================================================= */
+.kasir-cart-fullscreen {
+  width: 100% !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: none !important;
+  height: 100% !important;
+  display: flex !important;
+  position: relative !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.kasir-cart-fullscreen .kasir-cart-items {
+  min-height: 0 !important;
+}
+
+.kasir-cart-fullscreen .kasir-payment-summary {
+  flex-shrink: 0 !important;
+}
+
+.kasir-cart-fullscreen .kasir-cart-patient {
+  position: relative;
+  z-index: 20;
+}
+
+.kasir-cart-fullscreen .kasir-cart-items > div {
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.mobile-cart-launcher,
+.mobile-cart-backdrop {
+  display: none !important;
+}
+
+@media (max-width: 767px) {
+  .kasir-cart-fullscreen {
+    position: relative !important;
+    inset: auto !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-height: none !important;
+    border-radius: 0 !important;
+    animation: none !important;
+    overflow: hidden !important;
+  }
+
+  .kasir-cart-fullscreen .kasir-cart-patient {
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .kasir-cart-fullscreen .kasir-payment-summary {
+    max-height: 48% !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1279px) {
+  .kasir-cart-fullscreen {
+    position: relative !important;
+    inset: auto !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-height: none !important;
+    min-height: 0 !important;
+    border-radius: 0 !important;
+    animation: none !important;
+    overflow: hidden !important;
+  }
+}
+
+@media (min-width: 1024px) {
+  .kasir-cart-fullscreen {
+    width: 100% !important;
+    flex-basis: auto !important;
+  }
+
+  .kasir-cart-fullscreen .kasir-cart-items > div > div {
+    padding-top: .7rem !important;
+    padding-bottom: .7rem !important;
+  }
+}
+
+@media (min-width: 1536px) {
+  .kasir-cart-fullscreen .kasir-cart-items > div {
+    max-width: 1600px;
+  }
+}
