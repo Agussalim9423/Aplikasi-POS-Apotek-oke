@@ -946,7 +946,7 @@ async function loadData() {
   const filteredDoctors = doctors.filter(d => d.name.toLowerCase().includes(doctorSearch.toLowerCase()));
 
   return (
-    <div className="kasir-cart-fullscreen flex h-full min-h-0 flex-col bg-gray-50">
+    <div className="kasir-pos-page flex h-full min-h-0 w-full min-w-0 flex-col bg-gray-50 overflow-hidden">
       {/* Jenis Penjualan */}
       <div className="kasir-sale-header shrink-0 bg-white border-b border-gray-100 px-4 py-2.5">
         <div className="flex items-center justify-between gap-3">
