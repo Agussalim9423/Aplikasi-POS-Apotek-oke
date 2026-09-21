@@ -329,3 +329,75 @@ button, a, input, select, textarea { touch-action: manipulation; }
   from { transform: translateY(100%); }
   to { transform: translateY(0); }
 }
+
+/* =========================================================
+   DESKTOP CASHIER CART - MAXIMIZE VISIBLE CHECKOUT ITEMS
+   ========================================================= */
+@media (min-width: 1024px) {
+  .kasir-cart-panel {
+    width: 480px !important;
+    flex: 0 0 480px !important;
+  }
+
+  .kasir-cart-patient {
+    padding: .7rem 1rem !important;
+    gap: .45rem !important;
+  }
+
+  .kasir-cart-items {
+    min-height: 0 !important;
+  }
+
+  .kasir-cart-items > div > div {
+    padding-top: .55rem !important;
+    padding-bottom: .55rem !important;
+  }
+
+  .kasir-payment-summary {
+    padding: .7rem 1rem !important;
+    gap: .5rem !important;
+    flex-shrink: 0;
+  }
+
+  .kasir-payment-summary .space-y-1\.5 {
+    gap: .3rem !important;
+  }
+
+  .kasir-payment-summary .py-1\.5 {
+    padding-top: .3rem !important;
+    padding-bottom: .3rem !important;
+  }
+
+  .kasir-payment-summary .py-2\.5 {
+    padding-top: .45rem !important;
+    padding-bottom: .45rem !important;
+  }
+}
+
+@media (min-width: 1280px) {
+  .kasir-cart-panel {
+    width: 520px !important;
+    flex-basis: 520px !important;
+  }
+
+  .kasir-cart-patient {
+    padding: .55rem 1rem !important;
+  }
+
+  .kasir-cart-items > div > div {
+    padding-top: .45rem !important;
+    padding-bottom: .45rem !important;
+  }
+
+  .kasir-payment-summary {
+    padding: .55rem 1rem !important;
+    gap: .4rem !important;
+  }
+}
+
+@media (min-width: 1536px) {
+  .kasir-cart-panel {
+    width: 560px !important;
+    flex-basis: 560px !important;
+  }
+}
