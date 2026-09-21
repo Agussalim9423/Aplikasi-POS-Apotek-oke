@@ -343,14 +343,19 @@ export function AuthProvider({
       .maybeSingle();
 
     if (error) {
-      console.error(
-        'Login error:',
-        error,
-      );
+      console.error('Login error:', error);
+
+      const message = [
+        error.message,
+        error.details,
+        error.hint,
+        error.code ? `Kode ${error.code}` : '',
+      ].filter(Boolean).join(' | ');
 
       return {
-        error:
-          'Gagal terhubung ke server',
+        error: message
+          ? `Gagal terhubung ke server: ${message}`
+          : 'Gagal terhubung ke server. Periksa koneksi internet iPad lalu coba lagi.',
       };
     }
 
