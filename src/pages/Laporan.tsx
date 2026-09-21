@@ -453,24 +453,38 @@ function KeuntunganTab() {
     const { from, to } = getRange();
     if (!from || !to) { setLoading(false); return; }
 
-    const fromIso = new Date(from).toISOString();
-    const toIso = new Date(to + 'T23:59:59').toISOString();
+    try {
+      const fromIso = new Date(from).toISOString();
+      const toIso = new Date(to + 'T23:59:59').toISOString();
 
-    const [salesRes, itemsRes, expRes] = await Promise.all([
-      tenantFrom('sales').select('*').gte('sale_date', fromIso).lte('sale_date', toIso),
-      tenantFrom('sale_items').select('*'),
-      tenantFrom('operational_expenses').select('*').gte('expense_date', from).lte('expense_date', to).order('expense_date', { ascending: false }),
-    ]);
+      const [salesRes, expRes] = await Promise.all([
+        tenantFrom('sales').select('*').gte('sale_date', fromIso).lte('sale_date', toIso),
+        tenantFrom('operational_expenses').select('*').gte('expense_date', from).lte('expense_date', to).order('expense_date', { ascending: false }),
+      ]);
 
-    const salesData = (salesRes.data as Sale[] | null) ?? [];
-    const itemsData = (itemsRes.data as SaleItem[] | null) ?? [];
-    const saleIds = new Set(salesData.map(s => s.id));
-    const filteredItems = itemsData.filter(i => saleIds.has(i.sale_id));
+      if (salesRes.error) throw salesRes.error;
+      if (expRes.error) throw expRes.error;
 
-    setSales(salesData);
-    setSaleItems(filteredItems);
-    setExpenses((expRes.data as OperationalExpense[] | null) ?? []);
-    setLoading(false);
+      const salesData = (salesRes.data as Sale[] | null) ?? [];
+      const saleIds = salesData.map(s => s.id);
+
+      const itemsRes = saleIds.length > 0
+        ? await tenantFrom('sale_items').select('*').in('sale_id', saleIds)
+        : { data: [], error: null };
+
+      if (itemsRes.error) throw itemsRes.error;
+
+      setSales(salesData);
+      setSaleItems((itemsRes.data as SaleItem[] | null) ?? []);
+      setExpenses((expRes.data as OperationalExpense[] | null) ?? []);
+    } catch (error) {
+      console.error('Gagal memuat laporan keuntungan:', error);
+      setSales([]);
+      setSaleItems([]);
+      setExpenses([]);
+    } finally {
+      setLoading(false);
+    }
   }
 
   const totalRevenue = sales.reduce((s, r) => s + r.total, 0);
