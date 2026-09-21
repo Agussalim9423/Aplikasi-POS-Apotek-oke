@@ -99,7 +99,6 @@ function printReceipt(data: ReceiptData, onPrinted?: () => void) {
     hour: '2-digit', minute: '2-digit', hour12: false,
   });
   const p = data.pharmacy;
-  const cashier = data.cashierName || 'Kasir';
 
   // 58mm rolls commonly have only about 48mm of printable width.
   // Keeping the content inside that safe area prevents clipped/faded columns.
@@ -129,7 +128,6 @@ function printReceipt(data: ReceiptData, onPrinted?: () => void) {
 
   lines.push(twoCol('No', data.invoiceNumber));
   lines.push(twoCol('Tgl', dateStr));
-  lines.push(twoCol('Kasir', cashier));
   lines.push(twoCol('Pasien', data.patientName || 'Umum'));
   if (data.doctorName) lines.push(twoCol('Dokter', data.doctorName));
   if (data.doctorSip) lines.push(twoCol('SIP', data.doctorSip));
@@ -980,6 +978,7 @@ async function loadData() {
 
       {/* Keranjang + pencarian obat */}
       <div className="kasir-cart-panel kasir-cart-fullscreen w-full flex-1 min-h-0 flex flex-col bg-white border-0 shadow-none">
+        <div className="kasir-main-workspace min-w-0 min-h-0 flex-1 flex flex-col overflow-hidden">
         <div className="kasir-cart-patient shrink-0 p-3 border-b border-gray-100 bg-white">
           <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.4fr)_minmax(240px,.8fr)_minmax(240px,.8fr)] gap-2 items-end">
             <div className="relative">
@@ -1222,6 +1221,8 @@ async function loadData() {
         </div>
 
         {/* Ringkasan pembayaran */}
+              </div>
+
         <div className="kasir-payment-summary shrink-0 border-t border-gray-100 p-3 sm:p-4 space-y-3 bg-white">
           <div className="flex justify-between text-sm text-gray-500"><span>Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
           <div className="space-y-1.5">
@@ -1261,7 +1262,6 @@ async function loadData() {
             <Play size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
         </div>
-      </div>
 
       {/* Barcode Scanner */}
       {showScanner && (
@@ -1282,21 +1282,20 @@ async function loadData() {
         />
       )}
 
-      <button
-        type="button"
-        onClick={() => setShowMobileCart(true)}
-        className={`${showMobileCart ? 'hidden' : 'mobile-cart-launcher'}`}
-        aria-label={`Buka keranjang, ${cart.length} item`}
-      >
-        <span className="flex items-center gap-2 min-w-0">
-          <span className="relative shrink-0">
-            <ShoppingCart size={21} strokeWidth={2.25} />
-            <span className="mobile-cart-badge">{cart.length}</span>
-          </span>
-          <span className="truncate">Keranjang</span>
-        </span>
-        <span className="font-bold whitespace-nowrap">{formatCurrency(grandTotal)}</span>
-      </button>
+      <div className="kasir-mobile-payment-bar">
+        <div className="min-w-0">
+          <div className="text-[11px] text-gray-500">Total Pembayaran</div>
+          <div className="text-lg font-bold text-teal-600 truncate">{formatCurrency(grandTotal)}</div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowPaymentModal(true)}
+          disabled={cart.length === 0 || !currentShift}
+          className="shrink-0 bg-teal-500 hover:bg-teal-600 disabled:opacity-50 text-white font-semibold px-5 py-3 rounded-xl flex items-center justify-center gap-2 touch-manipulation"
+        >
+          <CreditCard size={17} /> Pembayaran
+        </button>
+      </div>
 
       {showPaymentModal && (
         <div className="fixed inset-0 z-50 bg-gray-900/40 flex items-center justify-center p-4">
