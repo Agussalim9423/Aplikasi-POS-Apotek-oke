@@ -908,242 +908,200 @@ async function loadData() {
   const filteredDoctors = doctors.filter(d => d.name.toLowerCase().includes(doctorSearch.toLowerCase()));
 
   return (
-    <div className="flex h-full min-h-0 flex-col lg:flex-row">
-      {/* Left: Product Search */}
-      <div className={`kasir-product-panel flex-1 min-h-0 flex flex-col bg-gray-50 overflow-hidden ${showMobileCart ? 'mobile-cart-open' : ''}`}>
-        <div className="kasir-toolbar p-4 bg-white border-b border-gray-100">
-          <div className="flex items-center justify-between gap-3 mb-3">
-            <div>
+    <div className="kasir-cart-fullscreen flex h-full min-h-0 flex-col bg-gray-50">
+      {/* Jenis Penjualan */}
+      <div className="shrink-0 bg-white border-b border-gray-100 px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="shrink-0">
               <h2 className="font-bold text-gray-800 text-lg">Kasir POS</h2>
-              {currentShift && <p className="text-xs text-gray-500 mt-0.5">Shift {currentShift.shift_type === 'morning' ? 'Pagi' : 'Malam'} · Buka {new Date(currentShift.opened_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</p>}
+              {currentShift && (
+                <p className="text-[11px] text-gray-500">
+                  {'Shift ' + (currentShift.shift_type === 'morning' ? 'Pagi' : 'Malam') + ' · ' + new Date(currentShift.opened_at).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                </p>
+              )}
             </div>
-            {currentShift && <button type="button" onClick={() => void prepareCloseShift()} className="flex items-center gap-1.5 px-3 py-2 border border-red-200 text-red-600 hover:bg-red-50 rounded-lg text-xs font-semibold"><LockKeyhole size={14} /> Tutup Shift</button>}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative flex-1 min-w-[180px]">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                ref={searchRef}
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Cari nama obat, generik, atau scan barcode..."
-                className="w-full pl-9 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-gray-50"
-              />
-            </div>
-            <div className="relative">
-              <select
-                value={categoryFilter}
-                onChange={e => setCategoryFilter(e.target.value)}
-                className="appearance-none pl-3 pr-9 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-white font-medium text-gray-700"
-              >
-                <option value="all">Semua Kategori</option>
-                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-              </select>
-              <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-            </div>
-            <button
-              onClick={() => setShowScanner(true)}
-              className="flex items-center gap-2 px-4 py-2.5 bg-teal-500 hover:bg-teal-600 text-white rounded-xl text-sm font-semibold transition-colors"
-            >
-              <ScanLine size={16} /> Scan
-            </button>
-          </div>
-          {/* Sale Type Toggle */}
-          <div className="flex items-center gap-2 mt-3 overflow-x-auto pb-1">
-            <span className="text-xs text-gray-500 font-medium">Jenis Penjualan:</span>
-            <div className="flex bg-gray-100 rounded-lg p-0.5 min-w-max">
+            <span className="hidden sm:inline text-xs text-gray-400">Jenis Penjualan:</span>
+            <div className="flex bg-gray-100 rounded-lg p-0.5 min-w-max overflow-x-auto">
               {([['regular', 'Penjualan Umum'], ['prescription', 'Penjualan Resep'], ['doctor', 'Penjualan Dokter']] as const).map(([type, label]) => (
-                <button
-                  key={type}
-                  onClick={() => changeSaleType(type)}
-                  className={`px-3 py-1.5 rounded-md text-sm font-semibold transition-colors ${saleType === type ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500'}`}
-                >{label}</button>
+                <button key={type} type="button" onClick={() => changeSaleType(type)}
+                  className={'px-3 py-1.5 rounded-md text-sm font-semibold transition-colors ' + (saleType === type ? 'bg-white text-teal-600 shadow-sm' : 'text-gray-500 hover:text-gray-700')}>
+                  {label}
+                </button>
               ))}
             </div>
           </div>
-        </div>
-        <div className="flex-1 min-h-0 overflow-y-auto p-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 content-start">
-          {filteredMeds.map(med => (
-            <button
-              key={med.id}
-              onClick={() => addToCart(med)}
-              disabled={med.stock <= 0 || !currentShift}
-              className={`text-left bg-white border rounded-xl p-3 transition-all hover:shadow-md hover:border-teal-300 active:scale-95 ${
-                med.stock <= 0 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
-              }`}
-            >
-              <div className="flex items-start justify-between gap-1">
-                <p className="text-sm font-semibold text-gray-800 leading-tight line-clamp-2">{med.name}</p>
-                {med.requires_prescription && (
-                  <span className="text-[9px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-bold flex-shrink-0">R/</span>
-                )}
-              </div>
-              <p className="text-xs text-gray-400 mt-1">{med.category}</p>
-              <div className="flex items-center justify-between mt-2">
-                <span className="text-sm font-bold text-teal-600">{formatCurrency(getPrice(med))}</span>
-                <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
-                  med.stock <= 0 ? 'bg-red-100 text-red-600' :
-                  med.stock <= med.min_stock ? 'bg-orange-100 text-orange-600' :
-                  'bg-green-100 text-green-600'
-                }`}>{med.stock} {med.unit}{med.pieces_per_strip > 1 && med.unit === 'strip' ? ` (${med.pieces_per_strip} pcs)` : ''}</span>
-              </div>
+          {currentShift && (
+            <button type="button" onClick={() => void prepareCloseShift()}
+              className="shrink-0 flex items-center gap-1.5 px-3 py-2 border border-red-200 text-red-600 hover:bg-red-50 rounded-lg text-xs font-semibold">
+              <LockKeyhole size={14} /> <span className="hidden sm:inline">Tutup Shift</span>
             </button>
-          ))}
-          {filteredMeds.length === 0 && (
-            <div className="col-span-3 text-center text-gray-400 py-16">
-              <Search size={32} className="mx-auto mb-2 text-gray-300" />
-              <p>Obat tidak ditemukan</p>
-            </div>
           )}
         </div>
-
       </div>
 
-      {/* Right: Cart */}
-      <div className={`kasir-cart-panel w-full lg:w-[480px] xl:w-[520px] 2xl:w-[560px] h-auto lg:h-full min-h-0 flex flex-col bg-white border-t lg:border-t-0 lg:border-l border-gray-100 shadow-sm ${showMobileCart ? 'mobile-cart-sheet-open' : ''}`}>
-        <div className="mobile-cart-sheet-header md:hidden">
-          <div className="min-w-0">
-            <p className="font-bold text-gray-800">Keranjang Transaksi</p>
-            <p className="text-[11px] text-gray-400">{cart.length} item · {formatCurrency(grandTotal)}</p>
-          </div>
-          <button type="button" onClick={() => setShowMobileCart(false)} className="mobile-cart-close" aria-label="Tutup keranjang">
-            <X size={20} />
-          </button>
-        </div>
-        {/* Patient & Doctor */}
-        <div className="kasir-cart-patient p-4 border-b border-gray-100 space-y-2">
+      {/* Keranjang + pencarian obat */}
+      <div className="kasir-cart-panel kasir-cart-fullscreen w-full flex-1 min-h-0 flex flex-col bg-white border-0 shadow-none">
+        <div className="kasir-cart-patient shrink-0 p-3 sm:p-4 border-b border-gray-100 space-y-3">
           <div className="relative">
-            <label className="text-xs text-gray-500 font-medium">Pasien</label>
-            <input
-              value={selectedPatient ? selectedPatient.name : patientSearch}
-              onChange={e => { setPatientSearch(e.target.value); setPatientName(e.target.value); setSelectedPatient(null); }}
-              placeholder="Cari pasien atau ketik nama..."
-              className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
-            />
-            <button type="button" onClick={() => setShowQuickPatient(true)} className="absolute right-2 top-6 text-teal-600 hover:text-teal-700" title="Tambah pasien baru">
-              <UserPlus size={15} />
-            </button>
-            {patientSearch && !selectedPatient && filteredPatients.length > 0 && (
-              <div className="absolute z-20 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto">
-                {filteredPatients.slice(0, 5).map(p => (
-                  <button key={p.id} onClick={() => { setSelectedPatient(p); setPatientName(p.name); setPatientSearch(''); }}
-                    className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
-                  >
-                    <span className="font-medium">{p.name}</span>
-                    <span className="text-gray-400 ml-2">{p.phone}</span>
-                  </button>
-                ))}
+            <label className="text-xs text-gray-500 font-medium">Cari Obat</label>
+            <div className="flex gap-2 mt-1">
+              <div className="relative flex-1">
+                <Search size={17} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  ref={searchRef}
+                  autoFocus
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && filteredMeds.length > 0) {
+                      e.preventDefault();
+                      addToCart(filteredMeds[0]);
+                      setSearch('');
+                    }
+                  }}
+                  placeholder="Ketik nama obat, generik, atau barcode..."
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 bg-gray-50"
+                />
+                {search.trim() && (
+                  <div className="absolute z-40 left-0 right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-xl overflow-hidden max-h-72 overflow-y-auto">
+                    {filteredMeds.slice(0, 30).map(med => (
+                      <button key={med.id} type="button"
+                        onClick={() => { addToCart(med); setSearch(''); searchRef.current?.focus(); }}
+                        disabled={med.stock <= 0 || !currentShift}
+                        className="w-full text-left px-3 py-2.5 hover:bg-teal-50 border-b border-gray-50 last:border-b-0 disabled:opacity-40 disabled:cursor-not-allowed">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-gray-800 truncate">{med.name}</p>
+                            <p className="text-[11px] text-gray-400 truncate">
+                              {(med.generic_name || med.category) + (med.barcode ? ' · ' + med.barcode : '')}
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="text-sm font-bold text-teal-600">{formatCurrency(getPrice(med))}</p>
+                            <p className={'text-[11px] ' + (med.stock <= 0 ? 'text-red-500' : med.stock <= med.min_stock ? 'text-orange-500' : 'text-green-600')}>
+                              {'Stok ' + med.stock + ' ' + med.unit}
+                            </p>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                    {filteredMeds.length === 0 && <div className="px-4 py-6 text-center text-sm text-gray-400">Obat tidak ditemukan</div>}
+                    {filteredMeds.length > 30 && <div className="px-4 py-2 text-[11px] text-gray-400 bg-gray-50">Menampilkan 30 hasil pertama. Ketik lebih spesifik untuk mempersempit.</div>}
+                  </div>
+                )}
               </div>
-            )}
+              <button type="button" onClick={() => setShowScanner(true)}
+                className="shrink-0 flex items-center gap-2 px-4 py-2.5 bg-teal-500 hover:bg-teal-600 text-white rounded-xl text-sm font-semibold">
+                <ScanLine size={16} /> <span className="hidden sm:inline">Scan</span>
+              </button>
+            </div>
           </div>
-          {saleType !== 'regular' && (
+
+          <div className={'grid gap-2 ' + (saleType === 'regular' ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-2')}>
             <div className="relative">
-              <label className="text-xs text-gray-500 font-medium">Dokter</label>
-              <input
-                value={selectedDoctor ? selectedDoctor.name : doctorName || doctorSearch}
-                onChange={e => { setDoctorSearch(e.target.value); setDoctorName(e.target.value); setSelectedDoctor(null); }}
-                placeholder="Cari dokter..."
-                className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
-              />
-              {doctorSearch && !selectedDoctor && filteredDoctors.length > 0 && (
-                <div className="absolute z-20 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto">
-                  {filteredDoctors.slice(0, 5).map(d => (
-                    <button key={d.id} onClick={() => { setSelectedDoctor(d); setDoctorName(d.name); setDoctorSip(d.sip_number ?? ''); setDoctorSearch(''); }}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
-                    >
-                      <span className="font-medium">{d.name}</span>
-                      <span className="text-gray-400 ml-2">{d.specialization}</span>
+              <label className="text-xs text-gray-500 font-medium">Pasien</label>
+              <div className="relative mt-1">
+                <input value={selectedPatient ? selectedPatient.name : patientSearch}
+                  onChange={e => { setPatientSearch(e.target.value); setPatientName(e.target.value); setSelectedPatient(null); }}
+                  placeholder="Cari pasien atau ketik nama..."
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400" />
+                <button type="button" onClick={() => setShowQuickPatient(true)} className="absolute right-2 top-1/2 -translate-y-1/2 text-teal-600 hover:text-teal-700" title="Tambah pasien baru"><UserPlus size={15} /></button>
+              </div>
+              {patientSearch && !selectedPatient && filteredPatients.length > 0 && (
+                <div className="absolute z-30 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto">
+                  {filteredPatients.slice(0, 5).map(p => (
+                    <button key={p.id} type="button" onClick={() => { setSelectedPatient(p); setPatientName(p.name); setPatientSearch(''); }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50">
+                      <span className="font-medium">{p.name}</span><span className="text-gray-400 ml-2">{p.phone}</span>
                     </button>
                   ))}
                 </div>
               )}
-              {saleType === 'doctor' && (
-                <input
-                  value={doctorSip}
-                  onChange={e => setDoctorSip(e.target.value)}
-                  placeholder="No. SIP Dokter *"
-                  className="w-full mt-2 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
-                />
-              )}
             </div>
-          )}
+
+            {saleType !== 'regular' && (
+              <div className="relative">
+                <label className="text-xs text-gray-500 font-medium">Dokter</label>
+                <input value={selectedDoctor ? selectedDoctor.name : doctorName || doctorSearch}
+                  onChange={e => { setDoctorSearch(e.target.value); setDoctorName(e.target.value); setSelectedDoctor(null); }}
+                  placeholder="Cari dokter..."
+                  className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400" />
+                {doctorSearch && !selectedDoctor && filteredDoctors.length > 0 && (
+                  <div className="absolute z-30 w-full bg-white border border-gray-200 rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto">
+                    {filteredDoctors.slice(0, 5).map(d => (
+                      <button key={d.id} type="button" onClick={() => { setSelectedDoctor(d); setDoctorName(d.name); setDoctorSip(d.sip_number ?? ''); setDoctorSearch(''); }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50">
+                        <span className="font-medium">{d.name}</span><span className="text-gray-400 ml-2">{d.specialization}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {saleType === 'doctor' && <input value={doctorSip} onChange={e => setDoctorSip(e.target.value)} placeholder="No. SIP Dokter *" className="w-full mt-2 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-teal-400" />}
+              </div>
+            )}
+          </div>
+
           {saleType !== 'regular' && prescriptionError && <p className="text-xs text-red-500">{prescriptionError}</p>}
         </div>
 
-        {/* Cart Items */}
+        {/* Semua obat yang dipilih tampil di sini */}
         <div className="kasir-cart-items flex-1 min-h-0 overflow-y-auto overscroll-contain">
           {cart.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-gray-300">
+            <div className="flex flex-col items-center justify-center h-full min-h-[180px] text-gray-300">
               <ShoppingCartEmpty />
-              <p className="text-sm">Pilih obat untuk ditambahkan</p>
+              <p className="text-sm">Ketik nama obat di kolom Cari Obat di atas</p>
+              <p className="text-xs mt-1 text-gray-400">Pilih hasil pencarian untuk memasukkannya ke keranjang</p>
             </div>
           ) : (
             <div className="divide-y divide-gray-50">
               {cart.map(item => (
-                <div key={item.medicine.id} className="px-4 py-3">
-                  <div className="flex items-start justify-between gap-2">
+                <div key={item.medicine.id} className="px-4 py-3 sm:px-5">
+                  <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-800 break-words leading-snug">{item.medicine.name}</p>
-                      <p className="text-xs text-gray-400">{formatCurrency(getItemPrice(item))} / {item.unit?.unit_name ?? item.medicine.unit}{item.unit ? ` (${item.unit.conversion_factor} ${item.medicine.unit})` : ''}</p>
+                      <p className="text-xs text-gray-400">
+                        {formatCurrency(getItemPrice(item))} / {item.unit?.unit_name ?? item.medicine.unit}{item.unit ? ' (' + item.unit.conversion_factor + ' ' + item.medicine.unit + ')' : ''}
+                      </p>
                     </div>
-                    <button onClick={() => removeItem(item.medicine.id)} className="text-gray-300 hover:text-red-400 flex-shrink-0">
-                      <Trash2 size={14} />
-                    </button>
-                    {saleType !== 'regular' && <button onClick={() => printLabel({ pharmacyName: pharmacy.name, date: new Date().toLocaleDateString('id-ID'), patientName: (selectedPatient?.name ?? patientName) || 'Umum', medicineName: item.medicine.name, quantity: item.quantity, usage: item.usage })} className="text-teal-500 hover:text-teal-700 flex-shrink-0" title="Cetak etiket"><Tag size={14} /></button>}
+                    <div className="flex items-center gap-2 shrink-0">
+                      {saleType !== 'regular' && <button type="button" onClick={() => printLabel({ pharmacyName: pharmacy.name, date: new Date().toLocaleDateString('id-ID'), patientName: (selectedPatient?.name ?? patientName) || 'Umum', medicineName: item.medicine.name, quantity: item.quantity, usage: item.usage })} className="text-teal-500 hover:text-teal-700" title="Cetak etiket"><Tag size={15} /></button>}
+                      <button type="button" onClick={() => removeItem(item.medicine.id)} className="text-gray-300 hover:text-red-400" title="Hapus"><Trash2 size={15} /></button>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between mt-2">
+
+                  <div className="flex flex-wrap items-center justify-between gap-3 mt-2">
                     <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-0.5">
-                      <button onClick={() => updateQty(item.medicine.id, -1)} className="w-6 h-6 flex items-center justify-center text-gray-600 hover:text-gray-900">
-                        <Minus size={12} />
-                      </button>
-                      <input
-                        type="number"
-                        value={item.quantity}
-                        onChange={e => setQty(item.medicine.id, parseInt(e.target.value))}
-                        className="w-10 text-center text-sm font-semibold bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                      />
-                      <button onClick={() => updateQty(item.medicine.id, 1)} className="w-6 h-6 flex items-center justify-center text-gray-600 hover:text-gray-900">
-                        <Plus size={12} />
-                      </button>
+                      <button type="button" onClick={() => updateQty(item.medicine.id, -1)} className="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-gray-900"><Minus size={13} /></button>
+                      <input type="number" value={item.quantity} onChange={e => setQty(item.medicine.id, parseInt(e.target.value))} className="w-12 text-center text-sm font-semibold bg-transparent focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                      <button type="button" onClick={() => updateQty(item.medicine.id, 1)} className="w-8 h-8 flex items-center justify-center text-gray-600 hover:text-gray-900"><Plus size={13} /></button>
                     </div>
                     <div className="text-right">
                       <span className="text-sm font-bold text-gray-800">{formatCurrency(Math.max(0, getItemPrice(item) * item.quantity - item.discount))}</span>
                       {item.discount > 0 && <div className="text-[10px] text-red-500">Diskon -{formatCurrency(item.discount)}</div>}
                     </div>
                   </div>
+
                   {saleType === 'regular' && (
                     <div className="mt-2 flex items-center gap-2">
                       <label className="text-[11px] text-gray-500 whitespace-nowrap">Diskon item</label>
-                      <div className="relative flex-1">
+                      <div className="relative flex-1 max-w-xs">
                         <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[11px] text-gray-400">Rp</span>
-                        <input
-                          type="number"
-                          min="0"
-                          max={Math.max(0, getItemPrice(item) * item.quantity)}
-                          value={item.discount || ''}
-                          onChange={e => updateItemDiscount(item.medicine.id, e.target.value)}
-                          placeholder="0"
-                          className="w-full pl-7 pr-2 py-1.5 border border-gray-200 rounded-md text-[11px] focus:outline-none focus:ring-1 focus:ring-teal-400"
-                        />
+                        <input type="number" min="0" value={item.discount || ''} onChange={e => updateItemDiscount(item.medicine.id, e.target.value)} placeholder="0" className="w-full pl-7 pr-2 py-1.5 border border-gray-200 rounded-lg text-xs text-right focus:outline-none focus:ring-1 focus:ring-teal-400" />
                       </div>
                     </div>
                   )}
-                  {getUnitOptions(item.medicine.id).length > 0 && (
-                    <select value={item.unit?.id ?? ''} onChange={e => updateItemUnit(item.medicine.id, e.target.value)} className="w-full mt-2 px-2 py-1.5 border border-gray-200 rounded-md text-[11px] focus:outline-none focus:ring-1 focus:ring-teal-400">
-                      <option value="">Satuan dasar: {item.medicine.unit}</option>
-                      {getUnitOptions(item.medicine.id).map(unit => {
-                        const doctorUnitPrice = unit.price_doctor > 0 ? unit.price_doctor : (item.medicine.price_doctor || item.medicine.price_regular || item.medicine.sell_price) * unit.conversion_factor;
-                        const unitPrice = saleType === 'doctor'
-                          ? doctorUnitPrice
-                          : saleType === 'prescription' ? unit.price_prescription : unit.price_regular;
-                        return <option key={unit.id} value={unit.id}>{unit.unit_name} · {formatCurrency(unitPrice)}</option>;
-                      })}
-                    </select>
-                  )}
+
                   {saleType !== 'regular' && (
-                    <div className="grid grid-cols-2 gap-2 mt-2">
-                      <input value={item.usage} onChange={e => updateItemDetail(item.medicine.id, 'usage', e.target.value)} placeholder="Aturan pakai" className="px-2 py-1.5 border border-gray-200 rounded-md text-[11px] focus:outline-none focus:ring-1 focus:ring-teal-400" />
-                      <input type="number" min="1" value={item.maxQuantity ?? ''} onChange={e => updateItemDetail(item.medicine.id, 'maxQuantity', e.target.value)} placeholder="Maks. jumlah" className="px-2 py-1.5 border border-gray-200 rounded-md text-[11px] focus:outline-none focus:ring-1 focus:ring-teal-400" />
+                    <div className="mt-2 space-y-2">
+                      {getUnitOptions(item.medicine.id).length > 0 && (
+                        <select value={item.unit?.id ?? ''} onChange={e => updateItemUnit(item.medicine.id, e.target.value)} className="w-full sm:w-auto px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-teal-400">
+                          <option value="">Satuan utama ({item.medicine.unit})</option>
+                          {getUnitOptions(item.medicine.id).map(unit => <option key={unit.id} value={unit.id}>{unit.unit_name} · {formatCurrency(unit.price_regular)} · isi {unit.conversion_factor}</option>)}
+                        </select>
+                      )}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <input value={item.usage} onChange={e => updateItemDetail(item.medicine.id, 'usage', e.target.value)} placeholder="Aturan pakai, mis. 3 x 1" className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-teal-400" />
+                        <input type="number" min="1" value={item.maxQuantity ?? ''} onChange={e => updateItemDetail(item.medicine.id, 'maxQuantity', e.target.value)} placeholder="Maks. qty (opsional)" className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-teal-400" />
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1152,86 +1110,45 @@ async function loadData() {
           )}
         </div>
 
-        {/* Payment Summary */}
-        <div className="kasir-payment-summary border-t border-gray-100 p-4 space-y-3">
-          <div className="flex justify-between text-sm text-gray-600">
-            <span>Subtotal</span>
-            <span className="font-medium">{formatCurrency(subtotal)}</span>
-          </div>
+        {/* Ringkasan pembayaran */}
+        <div className="kasir-payment-summary shrink-0 border-t border-gray-100 p-3 sm:p-4 space-y-3 bg-white">
+          <div className="flex justify-between text-sm text-gray-500"><span>Subtotal</span><span>{formatCurrency(subtotal)}</span></div>
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600">Diskon Global</span>
-              <div className="flex items-center gap-1 text-xs">
-                <button
-                  type="button"
-                  onClick={() => { setDiscountMode('nominal'); setDiscountPercent(0); }}
-                  className={`px-2 py-0.5 rounded-md font-medium transition-colors ${discountMode === 'nominal' ? 'bg-teal-100 text-teal-700' : 'text-gray-400 hover:text-gray-600'}`}
-                >Rp</button>
-                <button
-                  type="button"
-                  onClick={() => { setDiscountMode('percent'); setGlobalDiscount(0); }}
-                  className={`px-2 py-0.5 rounded-md font-medium transition-colors ${discountMode === 'percent' ? 'bg-teal-100 text-teal-700' : 'text-gray-400 hover:text-gray-600'}`}
-                >%</button>
+              <span className="text-sm text-gray-500">Diskon Global</span>
+              <div className="flex items-center gap-1">
+                <button type="button" onClick={() => setDiscountMode('nominal')} className={'px-2 py-1 rounded-md text-[10px] ' + (discountMode === 'nominal' ? 'bg-teal-100 text-teal-700' : 'text-gray-400')}>Rp</button>
+                <button type="button" onClick={() => setDiscountMode('percent')} className={'px-2 py-1 rounded-md text-[10px] ' + (discountMode === 'percent' ? 'bg-teal-100 text-teal-700' : 'text-gray-400')}>%</button>
               </div>
             </div>
-            <input
-              type="number"
-              value={discountMode === 'percent' ? (discountPercent || '') : (globalDiscount || '')}
-              onChange={e => discountMode === 'percent' ? setDiscountPercent(Number(e.target.value)) : setGlobalDiscount(Number(e.target.value))}
-              placeholder="0"
-              className="w-full text-right px-2 py-1 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-teal-400"
-            />
-            {effectiveDiscount > 0 && (
-              <p className="text-xs text-gray-400 text-right">
-                {discountMode === 'percent' ? `${discountPercent}% = ${formatCurrency(effectiveDiscount)}` : `Diskon ${formatCurrency(effectiveDiscount)}`}
-              </p>
-            )}
+            <input type="number" value={discountMode === 'percent' ? (discountPercent || '') : (globalDiscount || '')} onChange={e => discountMode === 'percent' ? setDiscountPercent(Number(e.target.value)) : setGlobalDiscount(Number(e.target.value))} placeholder="0" className="w-full text-right px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-teal-400" />
+            {effectiveDiscount > 0 && <p className="text-xs text-gray-400 text-right">{discountMode === 'percent' ? (discountPercent + '% = ' + formatCurrency(effectiveDiscount)) : ('Diskon ' + formatCurrency(effectiveDiscount))}</p>}
           </div>
-          <div className="flex justify-between text-base font-bold text-gray-900 border-t border-gray-100 pt-2">
-            <span>TOTAL</span>
-            <span className="text-teal-600">{formatCurrency(grandTotal)}</span>
-          </div>
+          <div className="flex justify-between text-base font-bold text-gray-900 border-t border-gray-100 pt-2"><span>TOTAL</span><span className="text-teal-600">{formatCurrency(grandTotal)}</span></div>
           <div className="flex items-center justify-between text-sm">
             <label className="flex items-center gap-2 text-gray-600"><input type="checkbox" checked={taxEnabled} onChange={e => setTaxEnabled(e.target.checked)} className="accent-teal-500" /> Aktifkan PPN</label>
             {taxEnabled && <div className="flex items-center gap-1"><input type="number" min="0" max="100" value={taxPercent} onChange={e => setTaxPercent(Math.max(0, Number(e.target.value)))} className="w-16 px-2 py-1 border border-gray-200 rounded-lg text-right text-xs" /><span className="text-gray-500">%</span></div>}
           </div>
-          {taxEnabled && <div className="flex justify-between text-sm text-gray-500"><span>PPN ({taxPercent}%)</span><span>{formatCurrency(taxAmount)}</span></div>}
+          {taxEnabled && <div className="flex justify-between text-sm text-gray-500"><span>{'PPN (' + taxPercent + '%)'}</span><span>{formatCurrency(taxAmount)}</span></div>}
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-gray-600">Pembulatan / Penyesuaian Manual</span>
-              <span className="text-[10px] text-gray-400">+/− dari total</span>
-            </div>
-            <div className="grid grid-cols-[1fr_130px] gap-2 mt-1">
-              <input
-                type="text"
-                value={roundingDescription}
-                onChange={e => setRoundingDescription(e.target.value)}
-                placeholder="Keterangan, mis. Konsultasi / Donasi"
-                className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-teal-400"
-              />
-              <input
-                type="number"
-                value={manualRounding}
-                onChange={e => setManualRounding(e.target.value)}
-                placeholder="0"
-                className="w-full text-right px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-teal-400"
-              />
+            <div className="flex items-center justify-between"><span className="text-sm text-gray-600">Pembulatan / Penyesuaian Manual</span><span className="text-[10px] text-gray-400">+/− dari total</span></div>
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_160px] gap-2">
+              <input type="text" value={roundingDescription} onChange={e => setRoundingDescription(e.target.value)} placeholder="Keterangan, mis. Konsultasi / Donasi" className="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-teal-400" />
+              <input type="number" value={manualRounding} onChange={e => setManualRounding(e.target.value)} placeholder="0" className="w-full text-right px-2 py-1.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-teal-400" />
             </div>
           </div>
           {roundingAmount !== 0 && <div className="flex justify-between text-xs text-gray-500"><span>Setelah pembulatan</span><span className="font-semibold">{formatCurrency(grandTotal)}</span></div>}
-
           <div className="flex gap-2">
             <button type="button" onClick={parkSale} disabled={cart.length === 0 || !currentShift} className="flex-1 border border-amber-300 text-amber-700 hover:bg-amber-50 disabled:opacity-40 font-semibold py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"><Pause size={15} /> Parkir</button>
             <button type="button" onClick={() => setShowPaymentModal(true)} disabled={cart.length === 0 || !currentShift} className="flex-[2] bg-teal-500 hover:bg-teal-600 disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl transition-colors flex items-center justify-center gap-2"><CreditCard size={16} /> Pembayaran</button>
           </div>
           <div className="relative">
             <select value="" onChange={e => resumeSale(e.target.value)} className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 focus:outline-none focus:ring-2 focus:ring-teal-400">
-              <option value="">Daftar Antrean ({parkedSales.length})</option>
+              <option value="">{'Daftar Antrean (' + parkedSales.length + ')'}</option>
               {parkedSales.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
             </select>
             <Play size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
-
         </div>
       </div>
 
