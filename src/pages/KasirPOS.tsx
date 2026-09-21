@@ -1000,7 +1000,7 @@ async function loadData() {
       </div>
 
       {/* Right: Cart */}
-      <div className={`kasir-cart-panel w-full lg:w-[420px] xl:w-[460px] h-auto lg:h-full min-h-0 flex flex-col bg-white border-t lg:border-t-0 lg:border-l border-gray-100 shadow-sm ${showMobileCart ? 'mobile-cart-sheet-open' : ''}`}>
+      <div className={`kasir-cart-panel w-full lg:w-[480px] xl:w-[520px] 2xl:w-[560px] h-auto lg:h-full min-h-0 flex flex-col bg-white border-t lg:border-t-0 lg:border-l border-gray-100 shadow-sm ${showMobileCart ? 'mobile-cart-sheet-open' : ''}`}>
         <div className="mobile-cart-sheet-header md:hidden">
           <div className="min-w-0">
             <p className="font-bold text-gray-800">Keranjang Transaksi</p>
@@ -1011,7 +1011,7 @@ async function loadData() {
           </button>
         </div>
         {/* Patient & Doctor */}
-        <div className="p-4 border-b border-gray-100 space-y-2">
+        <div className="kasir-cart-patient p-4 border-b border-gray-100 space-y-2">
           <div className="relative">
             <label className="text-xs text-gray-500 font-medium">Pasien</label>
             <input
@@ -1071,7 +1071,7 @@ async function loadData() {
         </div>
 
         {/* Cart Items */}
-        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+        <div className="kasir-cart-items flex-1 min-h-0 overflow-y-auto overscroll-contain">
           {cart.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-300">
               <ShoppingCartEmpty />
@@ -1153,7 +1153,7 @@ async function loadData() {
         </div>
 
         {/* Payment Summary */}
-        <div className="border-t border-gray-100 p-4 space-y-3">
+        <div className="kasir-payment-summary border-t border-gray-100 p-4 space-y-3">
           <div className="flex justify-between text-sm text-gray-600">
             <span>Subtotal</span>
             <span className="font-medium">{formatCurrency(subtotal)}</span>
