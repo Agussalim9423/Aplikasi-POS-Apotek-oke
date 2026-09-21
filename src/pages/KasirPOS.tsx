@@ -1262,6 +1262,7 @@ async function loadData() {
             <Play size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
           </div>
         </div>
+      </div>
 
       {/* Barcode Scanner */}
       {showScanner && (
