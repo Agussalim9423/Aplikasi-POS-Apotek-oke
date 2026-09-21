@@ -499,3 +499,82 @@ button, a, input, select, textarea { touch-action: manipulation; }
     max-width: 1600px;
   }
 }
+
+
+/* =========================================================
+   CASHIER DENSE CART - top search, scrollable medicines,
+   compact totals fixed at the bottom.
+   ========================================================= */
+.kasir-cart-fullscreen .kasir-cart-items {
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+.kasir-cart-fullscreen .kasir-payment-summary {
+  flex-shrink: 0 !important;
+  padding: .45rem .75rem !important;
+  gap: .4rem !important;
+  background: #fff !important;
+  box-shadow: 0 -4px 12px rgba(15,23,42,.04);
+}
+
+.kasir-cart-fullscreen .kasir-payment-summary > .flex.justify-between.text-sm.text-gray-500 {
+  display: none;
+}
+
+.kasir-cart-fullscreen .kasir-payment-summary > .space-y-1\.5 {
+  display: grid;
+  grid-template-columns: auto minmax(180px, 1fr);
+  align-items: center;
+  gap: .35rem .75rem;
+}
+
+.kasir-cart-fullscreen .kasir-payment-summary > .space-y-1\.5 > .flex {
+  margin: 0;
+}
+
+.kasir-cart-fullscreen .kasir-payment-summary > .space-y-1\.5 > input {
+  margin: 0;
+}
+
+.kasir-cart-fullscreen .kasir-payment-summary > .flex.justify-between.text-base {
+  margin: 0 !important;
+  padding-top: .35rem !important;
+}
+
+.kasir-cart-fullscreen .kasir-payment-summary > .space-y-1\.5:has(+ .flex.justify-between.text-base) {
+  margin: 0;
+}
+
+.kasir-cart-fullscreen .kasir-payment-summary .py-2\.5 {
+  padding-top: .45rem !important;
+  padding-bottom: .45rem !important;
+}
+
+@media (min-width: 1024px) {
+  .kasir-cart-fullscreen .kasir-cart-patient {
+    padding: .55rem .75rem !important;
+  }
+
+  .kasir-cart-fullscreen .kasir-cart-items > div > .grid {
+    min-height: 52px;
+  }
+
+  .kasir-cart-fullscreen .kasir-payment-summary {
+    max-height: 145px !important;
+    overflow: visible !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .kasir-cart-fullscreen .kasir-cart-items {
+    overflow-x: auto !important;
+  }
+
+  .kasir-cart-fullscreen .kasir-payment-summary {
+    max-height: 42% !important;
+    overflow-y: auto !important;
+  }
+}
