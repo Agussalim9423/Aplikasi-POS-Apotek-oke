@@ -77,8 +77,32 @@ function PenjualanTab() {
   const [deleting, setDeleting] = useState(false);
   const [topMedicines, setTopMedicines] = useState<{ name: string; total_qty: number; total_revenue: number; unit: string }[]>([]);
   const [reportHpp, setReportHpp] = useState(0);
+  const [pharmacyIdentity, setPharmacyIdentity] = useState({
+    name: profile?.tenant?.name ?? 'Apotek',
+    address: profile?.tenant?.address ?? '',
+    phone: profile?.tenant?.phone ?? '',
+    pharmacistName: '',
+    sipaNumber: '',
+    siaNumber: '',
+  });
 
   useEffect(() => { load(); }, [period, dateFrom, dateTo, saleTypeFilter]);
+  useEffect(() => {
+    async function loadPharmacyIdentity() {
+      const { data } = await tenantFrom('settings').select('key, value');
+      const map: Record<string, string> = {};
+      for (const row of data ?? []) map[row.key] = row.value ?? '';
+      setPharmacyIdentity({
+        name: map.pharmacy_name || profile?.tenant?.name || 'Apotek',
+        address: map.pharmacy_address || profile?.tenant?.address || '',
+        phone: map.pharmacy_phone || profile?.tenant?.phone || '',
+        pharmacistName: map.pharmacist_name || '',
+        sipaNumber: map.sipa_number || '',
+        siaNumber: map.sia_number || '',
+      });
+    }
+    void loadPharmacyIdentity();
+  }, [profile?.tenant?.name, profile?.tenant?.address, profile?.tenant?.phone]);
   useEffect(() => { tenantFrom('doctors').select('*').eq('is_active', true).order('name').then((result: { data: Doctor[] | null }) => setDoctors(result.data ?? [])); }, []);
 
   function getPeriodDates(): { from: string; to: string } {
@@ -621,8 +645,27 @@ function KeuntunganTab() {
 
 function SaleDetail({ sale, onClose }: { sale: Sale & { sale_items: SaleItem[] | null; patients: { name: string } | null; doctors: { name: string } | null }; onClose: () => void }) {
   function printSale() {
-    const lines = (sale.sale_items ?? []).map(item => `<div>${item.medicine_name} x${item.quantity}<span style="float:right">${formatCurrency(item.total_price)}</span></div>`).join('');
-    const html = `<!doctype html><html><head><title>${sale.invoice_number}</title><style>@page{size:58mm auto;margin:0}body{width:58mm;margin:0;padding:4mm;font:11px monospace;box-sizing:border-box}.center{text-align:center}.line{border-top:1px dashed #000;margin:4px 0}.total{font-weight:bold;font-size:13px}</style></head><body><div class="center"><b>NOTA APOTEK</b><br>${sale.invoice_number}<br>${new Date(sale.sale_date).toLocaleString('id-ID')}</div><div class="line"></div><div>Pasien: ${sale.patient_name || sale.patients?.name || 'Umum'}</div><div>Dokter: ${sale.doctors?.name || '-'}</div><div>Jenis: ${sale.sale_type}</div><div class="line"></div>${lines}<div class="line"></div><div>Subtotal <span style="float:right">${formatCurrency(sale.subtotal)}</span></div><div>Diskon <span style="float:right">-${formatCurrency(sale.discount)}</span></div><div class="total">TOTAL <span style="float:right">${formatCurrency(sale.total)}</span></div><div>Bayar <span style="float:right">${formatCurrency(sale.paid_amount)}</span></div><div>Kembali <span style="float:right">${formatCurrency(sale.change_amount)}</span></div><div class="line"></div><div class="center">Terima kasih</div></body></html>`;
+    const escapeHtml = (value: string) => value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+
+    const lines = (sale.sale_items ?? []).map(item =>
+      `<div>${escapeHtml(item.medicine_name ?? '-')} x${item.quantity}<span style="float:right">${formatCurrency(item.total_price)}</span></div>`
+    ).join('');
+
+    const p = pharmacyIdentity;
+    const identity = [
+      `<b>${escapeHtml(p.name)}</b>`,
+      p.address ? escapeHtml(p.address) : '',
+      p.phone ? `Telp: ${escapeHtml(p.phone)}` : '',
+      p.pharmacistName ? `Apoteker: ${escapeHtml(p.pharmacistName)}` : '',
+      p.sipaNumber ? `SIPA: ${escapeHtml(p.sipaNumber)}` : '',
+      p.siaNumber ? `SIA: ${escapeHtml(p.siaNumber)}` : '',
+    ].filter(Boolean).join('<br>');
+
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(p.name)} - ${sale.invoice_number}</title><style>@page{size:58mm auto;margin:0}*{box-sizing:border-box}body{width:58mm;margin:0;padding:3mm 4mm;font:10px monospace;color:#000}.center{text-align:center}.line{border-top:1px dashed #000;margin:4px 0}.total{font-weight:bold;font-size:13px}.identity{line-height:1.35}</style></head><body><div class="center identity">${identity}<br>${escapeHtml(sale.invoice_number)}<br>${new Date(sale.sale_date).toLocaleString('id-ID')}</div><div class="line"></div><div>Pasien: ${escapeHtml(sale.patient_name || sale.patients?.name || 'Umum')}</div>${sale.doctors?.name ? `<div>Dokter: ${escapeHtml(sale.doctors.name)}</div>` : ''}<div>Jenis: ${escapeHtml(sale.sale_type)}</div><div class="line"></div>${lines}<div class="line"></div><div>Subtotal <span style="float:right">${formatCurrency(sale.subtotal)}</span></div><div>Diskon <span style="float:right">-${formatCurrency(sale.discount)}</span></div><div class="total">TOTAL <span style="float:right">${formatCurrency(sale.total)}</span></div><div>Bayar <span style="float:right">${formatCurrency(sale.paid_amount)}</span></div><div>Kembali <span style="float:right">${formatCurrency(sale.change_amount)}</span></div><div class="line"></div><div class="center">Terima kasih</div></body></html>`;
     printHtml(html);
   }
 
