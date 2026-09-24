@@ -455,23 +455,46 @@ export default function ObatStok() {
       }
     }
 
-    const [supsRes, batRes] = await Promise.all([
+    // Supabase/PostgREST membatasi hasil query default (sering 1.000 baris).
+    // Batch harus dipaginasi agar batch obat yang berada setelah baris ke-1.000
+    // tetap ikut dimuat dan terlihat di daftar maupun modal.
+    const [supsRes, allBatches] = await Promise.all([
       tenantFrom('suppliers')
         .select('*')
         .eq('is_active', true)
         .order('name'),
 
-      tenantFrom('medicine_batches')
-        .select('*, medicines(*)')
-        .order('expiry_date'),
+      (async () => {
+        const batches: BatchWithMed[] = [];
+        let batchFrom = 0;
+        let batchHasMore = true;
+
+        while (batchHasMore) {
+          const { data, error } = await tenantFrom('medicine_batches')
+            .select('*, medicines(*)')
+            .order('expiry_date')
+            .range(batchFrom, batchFrom + PAGE_SIZE - 1);
+
+          if (error) {
+            throw error;
+          }
+
+          const rows = (data ?? []) as BatchWithMed[];
+          batches.push(...rows);
+
+          if (rows.length < PAGE_SIZE) {
+            batchHasMore = false;
+          } else {
+            batchFrom += PAGE_SIZE;
+          }
+        }
+
+        return batches;
+      })(),
     ]);
 
     if (supsRes.error) {
       throw supsRes.error;
-    }
-
-    if (batRes.error) {
-      throw batRes.error;
     }
 
     setMedicines(allMedicines);
@@ -480,9 +503,7 @@ export default function ObatStok() {
       (supsRes.data ?? []) as Supplier[],
     );
 
-    setBatches(
-      (batRes.data ?? []) as BatchWithMed[],
-    );
+    setBatches(allBatches);
   } catch (error) {
     console.error(
       'Gagal memuat data obat:',
