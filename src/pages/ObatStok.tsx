@@ -1763,10 +1763,17 @@ export default function ObatStok() {
                   batches.filter(
                     b =>
                       b.medicine_id ===
-                        med.id &&
-                      (b.stock_quantity ??
-                        b.quantity) >
-                        0,
+                      med.id,
+                  );
+
+                const availableBatches =
+                  medBatches.filter(
+                    b =>
+                      Number(
+                        b.stock_quantity ??
+                          b.quantity ??
+                          0,
+                      ) > 0,
                   );
 
                 const soonestExpiry =
@@ -1908,26 +1915,49 @@ export default function ObatStok() {
                     </td>
 
                     <td className="px-4 py-3 text-center">
+                      {medBatches.length > 0 ? (
+                        <div className="space-y-1 min-w-[150px]">
+                          {medBatches
+                            .slice()
+                            .sort(
+                              (a, b) =>
+                                new Date(a.expiry_date).getTime() -
+                                new Date(b.expiry_date).getTime(),
+                            )
+                            .slice(0, 3)
+                            .map(b => {
+                              const qty = Number(
+                                b.stock_quantity ??
+                                  b.quantity ??
+                                  0,
+                              );
+                              const days = daysUntil(b.expiry_date);
 
-                      {daysLeft !==
-                        null && (
-                          <span
-                            className={`text-xs px-2 py-1 rounded-full font-medium ${
-                              daysLeft <= 30
-                                ? 'bg-red-50 text-red-600'
-                                : daysLeft <=
-                                    90
-                                  ? 'bg-yellow-50 text-yellow-700'
-                                  : 'bg-gray-50 text-gray-500'
-                            }`}
-                          >
-                            {formatDate(
-                              soonestExpiry!
-                                .expiry_date,
-                            )}
-                          </span>
-                        )}
-
+                              return (
+                                <div
+                                  key={b.id}
+                                  className="text-left"
+                                >
+                                  <div className="font-mono text-[11px] font-semibold text-gray-700">
+                                    {b.batch_number}
+                                  </div>
+                                  <div className="text-[10px] text-gray-400">
+                                    Exp: {formatDate(b.expiry_date)} · Stok: {qty}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          {medBatches.length > 3 && (
+                            <div className="text-[10px] text-blue-500">
+                              +{medBatches.length - 3} batch lainnya
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-300">
+                          Belum ada batch
+                        </span>
+                      )}
                     </td>
 
                     <td className="px-4 py-3">
@@ -3556,7 +3586,7 @@ function BatchesModal({
             existing.medicines?.name || 'obat lain';
 
           throw new Error(
-            `Nomor batch "${batchNumber}" sudah digunakan oleh "${ownerName}". Gunakan nomor batch yang berbeda.`,
+            `Nomor batch "${batchNumber}" sudah digunakan oleh "${ownerName}". Database saat ini masih memaksa nomor batch unik untuk seluruh obat. Struktur database perlu diperbaiki menjadi unik per obat + nomor batch. Setelah migrasi database dijalankan, nomor batch yang sama boleh digunakan pada obat berbeda.`,
           );
         }
       } else {
