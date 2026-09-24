@@ -3496,29 +3496,83 @@ function BatchesModal({
     setSaving(true);
 
     try {
-      const { error } =
-        await tenantFrom(
-          'medicine_batches',
-        ).insert({
-          medicine_id:
-            medicine.id,
-          batch_number:
-            newBatch.batch_number.trim(),
-          expiry_date:
-            newBatch.expiry_date,
-          quantity:
-            newBatch.quantity ||
-            0,
-          stock_quantity:
-            newBatch.quantity ||
-            0,
-          buy_price:
-            newBatch.buy_price ||
-            null,
-        });
+      const batchNumber = newBatch.batch_number.trim();
+      const quantity = Number(newBatch.quantity || 0);
+      const buyPrice = Number(newBatch.buy_price || 0);
 
-      if (error) {
-        throw error;
+      /*
+       * Batch number pada database bersifat unik per tenant
+       * (constraint batch_tenant_key). Sebelum INSERT, cek dulu
+       * agar pengguna mendapat perilaku yang aman dan pesan yang jelas.
+       */
+      const { data: existingRows, error: existingError } =
+        await tenantFrom('medicine_batches')
+          .select('id, medicine_id, batch_number, expiry_date, quantity, stock_quantity, buy_price, medicines(name)')
+          .eq('batch_number', batchNumber);
+
+      if (existingError) {
+        throw existingError;
+      }
+
+      const existing = (existingRows ?? [])[0] as
+        | {
+            id: string;
+            medicine_id: string;
+            batch_number: string;
+            expiry_date: string;
+            quantity: number;
+            stock_quantity: number;
+            buy_price: number | null;
+            medicines?: { name?: string } | null;
+          }
+        | undefined;
+
+      if (existing) {
+        if (existing.medicine_id === medicine.id) {
+          /*
+           * Batch yang sama untuk obat yang sama berarti data batch
+           * yang sudah ada. Gabungkan stok daripada gagal karena
+           * unique constraint.
+           */
+          const { error: updateError } =
+            await tenantFrom('medicine_batches')
+              .update({
+                expiry_date: newBatch.expiry_date,
+                quantity: Number(existing.quantity || 0) + quantity,
+                stock_quantity: Number(existing.stock_quantity ?? existing.quantity ?? 0) + quantity,
+                buy_price: buyPrice > 0 ? buyPrice : existing.buy_price,
+              })
+              .eq('id', existing.id);
+
+          if (updateError) {
+            throw updateError;
+          }
+
+          alert(
+            `Batch ${batchNumber} sudah ada untuk obat ini. Stok batch berhasil digabungkan.`,
+          );
+        } else {
+          const ownerName =
+            existing.medicines?.name || 'obat lain';
+
+          throw new Error(
+            `Nomor batch "${batchNumber}" sudah digunakan oleh "${ownerName}". Gunakan nomor batch yang berbeda.`,
+          );
+        }
+      } else {
+        const { error } =
+          await tenantFrom('medicine_batches').insert({
+            medicine_id: medicine.id,
+            batch_number: batchNumber,
+            expiry_date: newBatch.expiry_date,
+            quantity,
+            stock_quantity: quantity,
+            buy_price: buyPrice > 0 ? buyPrice : null,
+          });
+
+        if (error) {
+          throw error;
+        }
       }
 
       setNewBatch({
