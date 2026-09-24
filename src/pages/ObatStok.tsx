@@ -3531,13 +3531,14 @@ function BatchesModal({
       const buyPrice = Number(newBatch.buy_price || 0);
 
       /*
-       * Batch number pada database bersifat unik per tenant
-       * (constraint batch_tenant_key). Sebelum INSERT, cek dulu
-       * agar pengguna mendapat perilaku yang aman dan pesan yang jelas.
+       * Nomor batch boleh sama untuk obat yang berbeda.
+       * Duplikat hanya dianggap sama jika medicine_id + batch_number
+       * sudah ada pada tenant yang aktif.
        */
       const { data: existingRows, error: existingError } =
         await tenantFrom('medicine_batches')
-          .select('id, medicine_id, batch_number, expiry_date, quantity, stock_quantity, buy_price, medicines(name)')
+          .select('id, medicine_id, batch_number, expiry_date, quantity, stock_quantity, buy_price')
+          .eq('medicine_id', medicine.id)
           .eq('batch_number', batchNumber);
 
       if (existingError) {
@@ -3553,42 +3554,30 @@ function BatchesModal({
             quantity: number;
             stock_quantity: number;
             buy_price: number | null;
-            medicines?: { name?: string } | null;
           }
         | undefined;
 
       if (existing) {
-        if (existing.medicine_id === medicine.id) {
-          /*
-           * Batch yang sama untuk obat yang sama berarti data batch
-           * yang sudah ada. Gabungkan stok daripada gagal karena
-           * unique constraint.
-           */
-          const { error: updateError } =
-            await tenantFrom('medicine_batches')
-              .update({
-                expiry_date: newBatch.expiry_date,
-                quantity: Number(existing.quantity || 0) + quantity,
-                stock_quantity: Number(existing.stock_quantity ?? existing.quantity ?? 0) + quantity,
-                buy_price: buyPrice > 0 ? buyPrice : existing.buy_price,
-              })
-              .eq('id', existing.id);
+        const { error: updateError } =
+          await tenantFrom('medicine_batches')
+            .update({
+              expiry_date: newBatch.expiry_date,
+              quantity: Number(existing.quantity || 0) + quantity,
+              stock_quantity:
+                Number(existing.stock_quantity ?? existing.quantity ?? 0) +
+                quantity,
+              buy_price:
+                buyPrice > 0 ? buyPrice : existing.buy_price,
+            })
+            .eq('id', existing.id);
 
-          if (updateError) {
-            throw updateError;
-          }
-
-          alert(
-            `Batch ${batchNumber} sudah ada untuk obat ini. Stok batch berhasil digabungkan.`,
-          );
-        } else {
-          const ownerName =
-            existing.medicines?.name || 'obat lain';
-
-          throw new Error(
-            `Nomor batch "${batchNumber}" sudah digunakan oleh "${ownerName}". Database saat ini masih memaksa nomor batch unik untuk seluruh obat. Struktur database perlu diperbaiki menjadi unik per obat + nomor batch. Setelah migrasi database dijalankan, nomor batch yang sama boleh digunakan pada obat berbeda.`,
-          );
+        if (updateError) {
+          throw updateError;
         }
+
+        alert(
+          `Batch ${batchNumber} sudah ada untuk obat ini. Stok batch berhasil digabungkan.`,
+        );
       } else {
         const { error } =
           await tenantFrom('medicine_batches').insert({
