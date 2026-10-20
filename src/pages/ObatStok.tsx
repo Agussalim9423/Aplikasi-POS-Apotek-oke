@@ -3922,7 +3922,7 @@ export function Modal({
   return (
     <div
       className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in"
-      onClick={onClose}
+      role="presentation"
     >
 
       <div
