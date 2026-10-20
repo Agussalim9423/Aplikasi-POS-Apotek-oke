@@ -1172,47 +1172,46 @@ function GRForm({
     void loadInitialData();
   }, []);
 
+  async function loadAllActiveMedicines(): Promise<Medicine[]> {
+    const all: Medicine[] = [];
+    const pageSize = 1000;
+    for (let from = 0; ; from += pageSize) {
+      const { data, error } = await tenantFrom('medicines')
+        .select('*')
+        .eq('is_active', true)
+        .order('name')
+        .range(from, from + pageSize - 1);
+      if (error) throw error;
+      const page = (data ?? []) as Medicine[];
+      all.push(...page);
+      if (page.length < pageSize) break;
+    }
+    return all;
+  }
+
   async function loadInitialData() {
     try {
-      const [
-        suppliersResponse,
-        medicinesResponse,
-        posResponse,
-      ] = await Promise.all([
+      const [suppliersResponse, allMedicines, posResponse] = await Promise.all([
         tenantFrom('suppliers')
           .select('*')
           .eq('is_active', true)
           .order('name'),
-
-        tenantFrom('medicines')
-          .select('*')
-          .eq('is_active', true)
-          .order('name'),
-
+        loadAllActiveMedicines(),
         tenantFrom('purchase_orders')
           .select('*')
           .in('status', ['sent', 'partial'])
-          .order('created_at', {
-            ascending: false,
-          }),
+          .order('created_at', { ascending: false }),
       ]);
 
-      setSuppliers(
-        (suppliersResponse.data ?? []) as Supplier[]
-      );
+      if (suppliersResponse.error) throw suppliersResponse.error;
+      if (posResponse.error) throw posResponse.error;
 
-      setMedicines(
-        (medicinesResponse.data ?? []) as Medicine[]
-      );
-
-      setPos(
-        (posResponse.data ?? []) as PurchaseOrder[]
-      );
+      setSuppliers((suppliersResponse.data ?? []) as Supplier[]);
+      setMedicines(allMedicines);
+      setPos((posResponse.data ?? []) as PurchaseOrder[]);
     } catch (error) {
-      console.error(
-        'Gagal memuat data penerimaan:',
-        error
-      );
+      console.error('Gagal memuat data penerimaan:', error);
+      alert('Gagal memuat daftar obat/penerimaan. Silakan coba muat ulang halaman.');
     }
   }
 
