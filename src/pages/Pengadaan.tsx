@@ -389,8 +389,40 @@ function POForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    tenantFrom('suppliers').select('*').eq('is_active', true).order('name').then((response: { data: Supplier[] | null }) => setSuppliers(response.data ?? []));
-    tenantFrom('medicines').select('*').eq('is_active', true).order('name').then((response: { data: Medicine[] | null }) => setMedicines(response.data ?? []));
+    let cancelled = false;
+    async function loadFormData() {
+      try {
+        const [supplierResponse, allMedicines] = await Promise.all([
+          tenantFrom('suppliers').select('*').eq('is_active', true).order('name'),
+          (async () => {
+            const all: Medicine[] = [];
+            const pageSize = 1000;
+            for (let from = 0; ; from += pageSize) {
+              const { data, error } = await tenantFrom('medicines')
+                .select('*')
+                .eq('is_active', true)
+                .order('name')
+                .range(from, from + pageSize - 1);
+              if (error) throw error;
+              const page = (data ?? []) as Medicine[];
+              all.push(...page);
+              if (page.length < pageSize) break;
+            }
+            return all;
+          })(),
+        ]);
+        if (supplierResponse.error) throw supplierResponse.error;
+        if (!cancelled) {
+          setSuppliers((supplierResponse.data ?? []) as Supplier[]);
+          setMedicines(allMedicines);
+        }
+      } catch (error) {
+        console.error('Gagal memuat daftar obat untuk SP:', error);
+        if (!cancelled) alert('Gagal memuat daftar obat untuk Surat Pesanan. Silakan muat ulang halaman.');
+      }
+    }
+    void loadFormData();
+    return () => { cancelled = true; };
   }, []);
 
   const filteredMeds = medicines.filter(m =>
