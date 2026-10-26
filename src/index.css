@@ -1242,3 +1242,79 @@ button, a, input, select, textarea { touch-action: manipulation; }
 .kasir-pos-page .kasir-cart-patient input {
   box-sizing: border-box !important;
 }
+
+
+/* HOTFIX: restore the medicine search field on desktop / older Chrome.
+   Use the actual JSX hierarchy rather than styling generic .relative elements. */
+@media screen and (min-width: 768px) {
+  .kasir-pos-page .kasir-cart-patient > .grid {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    align-items: end !important;
+    gap: 10px !important;
+  }
+
+  .kasir-pos-page .kasir-cart-patient > .grid > .relative:first-child {
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    display: block !important;
+  }
+
+  .kasir-pos-page .kasir-cart-patient > .grid > .relative:first-child > .flex.gap-2 {
+    display: flex !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    margin-top: 4px !important;
+  }
+
+  .kasir-pos-page .kasir-cart-patient > .grid > .relative:first-child > .flex.gap-2 > .relative.flex-1 {
+    display: block !important;
+    flex: 1 1 0% !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    overflow: visible !important;
+  }
+
+  .kasir-pos-page .kasir-cart-patient > .grid > .relative:first-child > .flex.gap-2 > .relative.flex-1 > input {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 42px !important;
+    padding-left: 38px !important;
+    box-sizing: border-box !important;
+  }
+
+  .kasir-pos-page .kasir-cart-patient > .grid > .relative:first-child > .flex.gap-2 > button {
+    display: inline-flex !important;
+    flex: 0 0 auto !important;
+    width: auto !important;
+    min-width: 88px !important;
+    max-width: 110px !important;
+    height: 42px !important;
+    white-space: nowrap !important;
+  }
+
+  .kasir-pos-page .kasir-cart-patient > .grid > .relative:not(:first-child) {
+    grid-column: auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+}
+
+@media screen and (min-width: 1024px) and (max-width: 1499px) {
+  .kasir-pos-page > .kasir-cart-fullscreen {
+    grid-template-columns: minmax(0, 1fr) 280px !important;
+  }
+}
+
+@media screen and (min-width: 768px) and (max-width: 1023px) {
+  .kasir-pos-page > .kasir-cart-fullscreen {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+}
