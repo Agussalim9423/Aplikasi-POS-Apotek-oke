@@ -980,8 +980,8 @@ async function loadData() {
       <div className="kasir-cart-panel kasir-cart-fullscreen w-full flex-1 min-h-0 flex flex-col bg-white border-0 shadow-none">
         <div className="kasir-main-workspace min-w-0 min-h-0 flex-1 flex flex-col overflow-hidden">
         <div className="kasir-cart-patient shrink-0 p-3 border-b border-gray-100 bg-white">
-          <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.4fr)_minmax(240px,.8fr)_minmax(240px,.8fr)] gap-2 items-end">
-            <div className="relative kasir-search-field">
+          <div className="kasir-fields-grid grid grid-cols-1 md:grid-cols-2 gap-2 items-end">
+            <div className="relative kasir-search-field md:col-span-2">
               <label className="text-xs text-gray-500 font-medium">Cari Obat</label>
               <div className="flex gap-2 mt-1">
                 <div className="relative flex-1">
