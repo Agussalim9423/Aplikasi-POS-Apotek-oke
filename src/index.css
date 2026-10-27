@@ -1745,3 +1745,70 @@ button, a, input, select, textarea { touch-action: manipulation; }
     max-width: 100% !important;
   }
 }
+
+
+/* Desktop cashier layout: explicit stable widths for the legacy Windows computer. */
+@media screen and (min-width: 768px) {
+  .kasir-pos-page .kasir-cart-patient .kasir-fields-grid {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: flex-start !important;
+    justify-content: space-between !important;
+    column-gap: 0 !important;
+    row-gap: 8px !important;
+    width: 100% !important;
+  }
+  .kasir-pos-page .kasir-cart-patient .kasir-fields-grid > .kasir-search-field {
+    display: block !important;
+    float: none !important;
+    clear: both !important;
+    flex: 0 0 100% !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 0 2px 0 !important;
+  }
+  .kasir-pos-page .kasir-cart-patient .kasir-fields-grid > .kasir-patient-field,
+  .kasir-pos-page .kasir-cart-patient .kasir-fields-grid > .kasir-doctor-field {
+    display: block !important;
+    float: none !important;
+    clear: none !important;
+    flex: 0 0 49% !important;
+    width: 49% !important;
+    max-width: 49% !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
+  }
+  .kasir-pos-page .kasir-cart-patient .kasir-fields-grid .kasir-patient-field label,
+  .kasir-pos-page .kasir-cart-patient .kasir-fields-grid .kasir-doctor-field label {
+    display: block !important;
+    line-height: 16px !important;
+    height: 16px !important;
+    margin: 0 0 4px !important;
+  }
+  .kasir-pos-page .kasir-cart-patient .kasir-fields-grid .kasir-patient-field input,
+  .kasir-pos-page .kasir-cart-patient .kasir-fields-grid .kasir-doctor-field > input {
+    display: block !important;
+    width: 100% !important;
+    height: 40px !important;
+    min-height: 40px !important;
+    box-sizing: border-box !important;
+    margin-top: 0 !important;
+  }
+}
+@media screen and (max-width: 767px) {
+  .kasir-pos-page .kasir-cart-patient .kasir-fields-grid {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+  .kasir-pos-page .kasir-cart-patient .kasir-fields-grid > .kasir-search-field,
+  .kasir-pos-page .kasir-cart-patient .kasir-fields-grid > .kasir-patient-field,
+  .kasir-pos-page .kasir-cart-patient .kasir-fields-grid > .kasir-doctor-field {
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
