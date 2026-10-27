@@ -1534,3 +1534,121 @@ button, a, input, select, textarea { touch-action: manipulation; }
     grid-template-columns: minmax(0, 1fr) 360px !important;
   }
 }
+
+
+/* CASHIER FINAL FIX: keep payment summary vertical and checkout visible. */
+.kasir-pos-page > .kasir-cart-fullscreen {
+  min-width: 0 !important;
+}
+.kasir-pos-page .kasir-payment-summary {
+  flex-direction: column !important;
+  align-items: stretch !important;
+  justify-content: flex-start !important;
+  gap: .65rem !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+.kasir-pos-page .kasir-payment-summary > * {
+  flex: 0 0 auto !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+.kasir-pos-page .kasir-payment-summary > .flex.gap-2 {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: stretch !important;
+}
+.kasir-pos-page .kasir-cart-patient > .grid {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  align-items: end !important;
+  gap: .65rem !important;
+}
+.kasir-pos-page .kasir-cart-patient > .grid > .relative:first-child {
+  grid-column: 1 / -1 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+.kasir-pos-page .kasir-cart-patient > .grid > .relative:not(:first-child) {
+  grid-column: auto !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+.kasir-pos-page .kasir-cart-patient input {
+  width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+.kasir-mobile-payment-bar {
+  box-sizing: border-box !important;
+  width: 100vw !important;
+  max-width: 100vw !important;
+  min-width: 0 !important;
+  flex-direction: row !important;
+}
+.kasir-mobile-payment-bar > .min-w-0 {
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
+}
+.kasir-mobile-payment-bar > button {
+  flex: 0 0 auto !important;
+  min-width: 132px !important;
+  white-space: nowrap !important;
+}
+@media screen and (min-width: 1024px) {
+  .kasir-pos-page > .kasir-cart-fullscreen {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(290px, 320px) !important;
+    align-items: stretch !important;
+  }
+  .kasir-pos-page .kasir-main-workspace {
+    grid-column: 1 !important;
+    grid-row: 1 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+  }
+  .kasir-pos-page .kasir-payment-summary {
+    display: flex !important;
+    flex-direction: column !important;
+    grid-column: 2 !important;
+    grid-row: 1 !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    overflow-y: auto !important;
+    border-left: 1px solid #e5e7eb !important;
+    padding: .65rem .7rem !important;
+  }
+  .kasir-mobile-payment-bar { display: none !important; }
+}
+@media screen and (max-width: 1023px) {
+  .kasir-pos-page > .kasir-cart-fullscreen {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+  .kasir-pos-page .kasir-payment-summary { display: none !important; }
+  .kasir-mobile-payment-bar {
+    position: fixed !important;
+    display: flex !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    z-index: 9999 !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: .75rem !important;
+    padding: .6rem .75rem calc(.6rem + env(safe-area-inset-bottom)) !important;
+    background: #fff !important;
+    border-top: 1px solid #e5e7eb !important;
+    box-shadow: 0 -4px 14px rgba(15,23,42,.12) !important;
+  }
+  .kasir-pos-page .kasir-cart-items { padding-bottom: 5.5rem !important; }
+}
+@media screen and (max-width: 639px) {
+  .kasir-pos-page .kasir-cart-patient > .grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .kasir-pos-page .kasir-cart-patient > .grid > .relative:first-child {
+    grid-column: 1 !important;
+  }
+}
