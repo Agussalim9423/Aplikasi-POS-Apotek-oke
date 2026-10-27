@@ -981,7 +981,7 @@ async function loadData() {
         <div className="kasir-main-workspace min-w-0 min-h-0 flex-1 flex flex-col overflow-hidden">
         <div className="kasir-cart-patient shrink-0 p-3 border-b border-gray-100 bg-white">
           <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.4fr)_minmax(240px,.8fr)_minmax(240px,.8fr)] gap-2 items-end">
-            <div className="relative">
+            <div className="relative kasir-search-field">
               <label className="text-xs text-gray-500 font-medium">Cari Obat</label>
               <div className="flex gap-2 mt-1">
                 <div className="relative flex-1">
@@ -1034,7 +1034,7 @@ async function loadData() {
               </div>
             </div>
 
-            <div className="relative">
+            <div className="relative kasir-patient-field">
               <label className="text-xs text-gray-500 font-medium">Pasien</label>
               <div className="relative mt-1">
                 <input
@@ -1061,7 +1061,7 @@ async function loadData() {
               )}
             </div>
 
-            <div className="relative">
+            <div className="relative kasir-doctor-field">
               <label className="text-xs text-gray-500 font-medium">Dokter</label>
               <input
                 value={selectedDoctor ? selectedDoctor.name : doctorName || doctorSearch}
